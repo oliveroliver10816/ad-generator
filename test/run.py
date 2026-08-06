@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Drive the generator in a real browser and verify what it produces."""
-import base64, http.server, io, pathlib, socketserver, threading, sys
+"""Drive the generator against real websites and verify what comes out."""
+import base64, http.server, io, pathlib, socketserver, sys, threading
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 QA = ROOT / "test" / "out"; QA.mkdir(parents=True, exist_ok=True)
-PORT = 8931
+PORT = 8941
+
+TARGETS = sys.argv[1:] or ["https://ribboncera.sfo3.digitaloceanspaces.com/index.html"]
 
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -14,91 +16,119 @@ class H(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 
 
-def serve():
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), H) as httpd:
-        httpd.serve_forever()
+socketserver.TCPServer.allow_reuse_address = True
+threading.Thread(target=lambda: socketserver.TCPServer(("", PORT), H).serve_forever(),
+                 daemon=True).start()
 
+fails = []
+with sync_playwright() as pw:
+    b = pw.chromium.launch()
+    for target in TARGETS:
+        errs = []
+        pg = b.new_page(viewport={"width": 1440, "height": 1000})
+        # A dead asset on the *scanned* site is that site's problem, not ours —
+        # the scanner already skips it. Only script errors count.
+        pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}")
+              if m.type == "error" and "Failed to load resource" not in m.text else None)
+        pg.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
+        pg.goto(f"http://localhost:{PORT}/", wait_until="networkidle")
 
-threading.Thread(target=serve, daemon=True).start()
+        print(f"\n=== {target}")
+        pg.fill("#site", target)
+        pg.fill("#ref", "")
+        pg.click("#scan")
+        try:
+            pg.wait_for_selector("#found:not([hidden])", timeout=90000)
+        except Exception:
+            print("  SCAN FAILED:", pg.text_content("#scanhint"))
+            fails.append(f"{target}: scan failed")
+            pg.close(); continue
 
-errs = []
-with sync_playwright() as p:
-    b = p.chromium.launch()
-    pg = b.new_page(viewport={"width": 1400, "height": 1000})
-    pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}") if m.type == "error" else None)
-    pg.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
-    pg.goto(f"http://localhost:{PORT}/", wait_until="networkidle")
-    pg.wait_for_function("document.getElementById('status').textContent.startsWith('Ready')",
-                         timeout=30000)
-    print("kit loaded ok")
+        found = pg.evaluate("""() => {
+            const cards = [...document.querySelectorAll('.fcard')].map(c => [
+                c.querySelector('.k').textContent, c.querySelector('.v').textContent]);
+            return Object.fromEntries(cards);
+        }""")
+        for k, v in found.items():
+            print(f"  {k:22s} {v[:70]}")
 
-    pg.fill("#ref", "Candle making, unhurried.\nWax families, wick sizing and pour-day "
-                    "notes written at a kitchen table.\n"
-                    "Supercalifragilisticexpialidociouslylongunbrokenword")
-    pg.click("#go")
-    pg.wait_for_function(
-        "document.getElementById('status').textContent.includes('seed')", timeout=180000)
-    print("status:", pg.text_content("#status"))
+        # pick a spread of sizes and 2 versions each
+        pg.evaluate("""() => {
+            document.querySelectorAll('.tile input').forEach(i => {
+              if (i.checked) { i.checked = false; i.dispatchEvent(new Event('change')); }});
+        }""")
+        want = ["300×250", "728×90", "160×600", "320×100", "1200×628"]
+        pg.evaluate("""(want) => {
+            for (const t of document.querySelectorAll('.tile')) {
+              const d = t.querySelector('.dim').textContent.trim();
+              if (want.includes(d)) {
+                const i = t.querySelector('input');
+                if (!i.checked) { i.checked = true; i.dispatchEvent(new Event('change')); }
+              }
+            }
+        }""", want)
+        pg.evaluate("""() => [...document.querySelectorAll('#pervals button')]
+                            .find(b => b.textContent === '2').click()""")
+        print("  tally:", pg.text_content("#tally"))
 
-    n = pg.evaluate("document.querySelectorAll('canvas').length")
-    print(f"canvases rendered: {n}")
+        pg.click("#go")
+        pg.wait_for_function(
+            "document.getElementById('statusline').textContent.includes('ready')", timeout=180000)
+        print("  status:", pg.text_content("#statusline"))
 
-    # exact-dimension check on every canvas
-    dims = pg.evaluate("""() => [...document.querySelectorAll('canvas')].map(c => {
-        const m = c.parentElement.parentElement.querySelector('.meta b').textContent
-                   .replace(/[^0-9x×]/g,'').replace('×','x');
-        return {real: c.width + 'x' + c.height, label: m};
-    })""")
-    bad = [d for d in dims if d["real"] != d["label"]]
-    print(f"dimension mismatches: {len(bad)} {bad[:3]}")
+        n = pg.evaluate("document.querySelectorAll('.card canvas').length")
+        misses = pg.evaluate("window.__fitMisses.length")
+        dims = pg.evaluate("""() => [...document.querySelectorAll('.card')].map(c => {
+            const cv = c.querySelector('canvas');
+            const lbl = c.querySelector('.spec b').textContent.replace('×','x');
+            return {real: cv.width + 'x' + cv.height, label: lbl};
+        })""")
+        bad = [d for d in dims if d["real"] != d["label"]]
+        links = pg.evaluate("""() => {
+            const a = [...document.querySelectorAll('.acts a.save')];
+            return {n: a.length, blobs: a.filter(x => x.href.startsWith('blob:')).length};
+        }""")
+        print(f"  images {n} · fit misses {misses} · dim mismatches {len(bad)} · save links {links}")
+        if n != 10: fails.append(f"{target}: expected 10 images, got {n}")
+        if misses: fails.append(f"{target}: {misses} fit misses")
+        if bad: fails.append(f"{target}: dim mismatch {bad[:2]}")
+        if links["n"] != links["blobs"]: fails.append(f"{target}: broken save links")
 
-    misses = pg.evaluate("window.__fitMisses")
-    print(f"text that could not be fitted: {len(misses)} {misses[:3]}")
+        # "Another version" must actually change the picture
+        before = pg.evaluate("document.querySelector('.card canvas').toDataURL().length")
+        pg.evaluate("""() => document.querySelector('.acts button').click()""")
+        pg.wait_for_timeout(2500)
+        after = pg.evaluate("document.querySelector('.card canvas').toDataURL().length")
+        changed = before != after
+        print(f"  another-version changed the image: {changed}")
+        if not changed: fails.append(f"{target}: reroll did not change output")
 
-    # download-button sanity: every card has an href + download name
-    dl = pg.evaluate("""() => {
-        const a = [...document.querySelectorAll('a.dl')];
-        return {count: a.length,
-                blobs: a.filter(x => x.href.startsWith('blob:')).length,
-                named: a.filter(x => (x.getAttribute('download')||'').length > 6).length};
-    }""")
-    print("download links:", dl)
+        with pg.expect_download(timeout=120000) as di:
+            pg.click("#dlall")
+        d = di.value
+        zp = QA / f"{target.split('/')[2].replace('.','_')}.zip"
+        d.save_as(zp)
+        print(f"  zip: {d.suggested_filename} {zp.stat().st_size/1024:.0f} KB")
 
-    # pull a representative strip out for eyeball QA
-    want = ["300x250", "728x90", "970x250", "160x600", "320x100", "1200x628", "300x1050", "200x200"]
-    shots = pg.evaluate("""(want) => {
-        const out = [];
-        for (const c of document.querySelectorAll('canvas')) {
-            const k = c.width + 'x' + c.height;
-            if (want.includes(k) && !out.some(o => o.k === k))
-                out.push({k, d: c.toDataURL('image/png')});
-        }
-        return out;
-    }""", want)
-    imgs = []
-    for s in shots:
-        im = Image.open(io.BytesIO(base64.b64decode(s["d"].split(",", 1)[1]))).convert("RGB")
-        imgs.append((s["k"], im))
-    if imgs:
-        W = max(i.width for _, i in imgs) + 40
-        Hh = sum(i.height + 34 for _, i in imgs) + 20
-        sheet = Image.new("RGB", (W, Hh), (232, 232, 236))
-        y = 20
-        for k, im in imgs:
-            sheet.paste(im, (20, y)); y += im.height + 34
-        sheet.save(QA / "strip.png")
-        print(f"strip.png {sheet.size} — {[k for k,_ in imgs]}")
+        shots = pg.evaluate("""() => [...document.querySelectorAll('.card canvas')]
+            .slice(0,5).map(c => ({k: c.width+'x'+c.height, d: c.toDataURL('image/png')}))""")
+        imgs = [(s["k"], Image.open(io.BytesIO(base64.b64decode(s["d"].split(",", 1)[1]))).convert("RGB"))
+                for s in shots]
+        if imgs:
+            W = max(i.width for _, i in imgs) + 40
+            Hh = sum(i.height + 26 for _, i in imgs) + 20
+            sheet = Image.new("RGB", (W, Hh), (231, 226, 218))
+            y = 16
+            for _, im in imgs:
+                sheet.paste(im, (20, y)); y += im.height + 26
+            name = QA / f"strip-{target.split('/')[2].replace('.','_')}.png"
+            sheet.save(name)
+            print(f"  {name.name} {sheet.size}")
 
-    # ZIP path
-    with pg.expect_download(timeout=120000) as di:
-        pg.click("#dlall")
-    d = di.value
-    zp = QA / "pack.zip"; d.save_as(zp)
-    print(f"zip: {d.suggested_filename} {zp.stat().st_size/1024:.0f} KB")
-
+        print(f"  console errors: {len(errs)} {errs[:2]}")
+        if errs: fails.append(f"{target}: {len(errs)} console errors: {errs[:1]}")
+        pg.close()
     b.close()
 
-print("console errors:", len(errs))
-for e in errs[:5]: print("  ", e)
-sys.exit(1 if (errs or bad or misses or dl["blobs"] != dl["count"]) else 0)
+print("\n" + ("FAILURES:\n  " + "\n  ".join(fails) if fails else "all checks passed"))
+sys.exit(1 if fails else 0)

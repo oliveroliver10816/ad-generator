@@ -1,2 +1,3 @@
 test/out/
 __pycache__/
+worker/public/

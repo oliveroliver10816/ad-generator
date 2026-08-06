@@ -4,48 +4,94 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Ad Pack Generator — Google Display sizes</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='17' r='11' fill='%23f6dfd3'/%3E%3Cpath d='M15 4c2.6 3 4 5 4 7.2A4 4 0 0 1 15 15a4 4 0 0 1-4-3.8C11 9 12.4 7 15 4z' fill='%23e9a03b'/%3E%3Crect x='13.8' y='14' width='2.4' height='8' rx='1.2' fill='%235b3a4a'/%3E%3C/svg%3E">
+<title>Ad Press — display ads from any website</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a090c'/%3E%3Crect x='6' y='9' width='20' height='7' fill='%23ef3a41'/%3E%3Crect x='6' y='19' width='12' height='4' fill='%23f5f1ec'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header>
+<header class="deck">
   <div class="wrap">
-    <p class="kick">Google Display Network</p>
-    <h1>Ad Pack Generator</h1>
-    <p class="lede">Type the website and, if you want, some reference text. Every run
-      draws a brand-new set in all 22 Google Display sizes — new wording, new crops,
-      new arrangement. The colours, fonts, logo and photos never change.</p>
+    <div class="brandbar">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="name">Ad Press</span>
+      <span class="tag">display ads, read off the page</span>
+    </div>
 
-    <form id="form">
-      <label for="site">Website</label>
-      <input id="site" type="text" value="https://ribboncera.com/" spellcheck="false" autocomplete="off">
+    <h1>Point it at a website.<br><em>It reads the site first.</em></h1>
+    <p class="lede">Every word, photograph and logo in the output is lifted from the page
+      you give it. Nothing is written in advance. Pick the sizes you actually want and
+      how many versions of each.</p>
 
-      <label for="ref">Reference text <span class="opt">optional — your own words get used in the ads</span></label>
-      <textarea id="ref" rows="3" spellcheck="false" placeholder="e.g.&#10;Candle making, unhurried.&#10;Wax families, wick sizing and pour-day notes from a kitchen table."></textarea>
+    <form id="form" novalidate>
+      <div class="field">
+        <label for="site">Website</label>
+        <div class="inline">
+          <input id="site" type="url" inputmode="url" spellcheck="false" autocomplete="off"
+                 placeholder="https://example.com" value="https://ribboncera.sfo3.digitaloceanspaces.com/index.html">
+          <button id="scan" type="submit" class="btn primary">Read the site</button>
+        </div>
+        <p class="hint" id="scanhint">The page is fetched server-side, so any public URL works.</p>
+      </div>
 
-      <div class="row">
-        <button id="go" type="submit" class="btn">Generate</button>
-        <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
-        <span id="status" class="status">Loading brand kit…</span>
+      <div class="field">
+        <label for="ref">Reference text <span class="opt">optional</span></label>
+        <textarea id="ref" rows="2" spellcheck="false"
+          placeholder="Anything you want the ads to say. Your lines get used ahead of the site's own."></textarea>
       </div>
     </form>
   </div>
 </header>
 
-<main id="out" class="wrap"></main>
+<section id="found" class="found" hidden>
+  <div class="wrap">
+    <h2 class="sect">What it found</h2>
+    <div class="foundgrid" id="foundgrid"></div>
+    <details class="copyout" id="copyout">
+      <summary>The wording it will draw from</summary>
+      <div id="copylists"></div>
+    </details>
+  </div>
+</section>
 
-<footer class="wrap">
-  <p>Sizes: 300&times;50 · 320&times;50 · 320&times;100 · 468&times;60 · 728&times;90 · 970&times;90 ·
-     980&times;120 · 930&times;180 · 970&times;250 · 200&times;200 · 250&times;250 · 300&times;250 ·
-     336&times;280 · 580&times;400 · 240&times;400 · 250&times;360 · 300&times;600 · 300&times;1050 ·
-     120&times;600 · 160&times;600 · 1200&times;628 · 1200&times;1200, plus the 1:1 and 4:1 logo assets.
-     Every file is an exact slot size and under Google's 150&nbsp;KB limit.</p>
+<section id="setup" class="setup" hidden>
+  <div class="wrap">
+    <h2 class="sect">Sizes</h2>
+    <div class="presets" role="group" aria-label="Size presets">
+      <button type="button" class="chip" data-preset="common">Most used</button>
+      <button type="button" class="chip" data-preset="all">Everything</button>
+      <button type="button" class="chip" data-preset="none">Clear</button>
+    </div>
+    <div id="sizes" class="sizegroups"></div>
+
+    <div class="controls">
+      <div class="stepper">
+        <span class="lab">Versions of each size</span>
+        <div class="steps" id="pervals" role="group" aria-label="Versions per size"></div>
+      </div>
+      <div class="tally">
+        <output id="tally" for="sizes pervals">nothing selected</output>
+        <div class="go">
+          <button id="go" type="button" class="btn primary" disabled>Generate</button>
+          <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
+        </div>
+      </div>
+    </div>
+    <div class="bar" id="bar" hidden><i id="barfill"></i></div>
+  </div>
+</section>
+
+<main id="out" class="proof"></main>
+
+<footer>
+  <div class="wrap">
+    <p>Images are exact Google Display slot sizes and stay under the 150&nbsp;KB upload
+      limit. <span id="statusline">Ready.</span></p>
+  </div>
 </footer>
 
 <script src="app.js"></script>
-<script src="ui.js"></script>
+<script type="module" src="ui.js"></script>
 </body>
 </html>

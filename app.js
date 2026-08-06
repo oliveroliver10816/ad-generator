@@ -69,8 +69,16 @@ function setFont(ctx, it) {
   ctx.letterSpacing = SUPPORTS_LS && it.ls ? `${it.ls}px` : '0px';
 }
 
-/** Draw an image cropped to fill (object-fit: cover) around a focal point. */
+/** Draw an image cropped to fill (object-fit: cover) around a focal point.
+ *  Some sites yield no usable photograph at all; rather than throw, the panel
+ *  becomes a flat red block, which is a legitimate look in this palette. */
 function drawCover(ctx, img, x, y, w, h, fx, fy) {
+  if (!img || !img.width || !img.height) {
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, '#d01820'); g.addColorStop(1, '#6d0810');
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    return;
+  }
   const ir = img.width / img.height, br = w / h;
   let sw, sh;
   if (ir > br) { sh = img.height; sw = sh * br; } else { sw = img.width; sh = sw / br; }
@@ -158,6 +166,19 @@ function drawArrow(ctx, x, cy, size, color) {
   ctx.stroke();
   return len;
 }
+/** Largest size at which `text` fits maxW, or 0 if it never does. Scanned
+ *  hosts can be very long (ribboncera.sfo3.digitaloceanspaces.com), so the
+ *  url must shrink or stand down rather than run under the button. */
+function fitSize(ctx, text, maxW, start, min, fam, weight) {
+  let sz = start;
+  while (sz >= min) {
+    ctx.font = fontStr(weight, sz, fam); ctx.letterSpacing = '0px';
+    if (ctx.measureText(text).width <= maxW) return sz;
+    sz -= Math.max(0.4, sz * 0.06);
+  }
+  return 0;
+}
+
 function ctaWidth(ctx, text, size, padX, arrow) {
   ctx.font = fontStr(700, size, UI_FONT); ctx.letterSpacing = '0px';
   return ctx.measureText(text).width + (arrow ? size * 0.82 + size * 0.42 : 0) + padX * 2;
@@ -176,17 +197,22 @@ function pill(ctx, text, x, y, size, padX, padY, bg, fg, align, arrow) {
   return { w, h };
 }
 
-function drawLogo(ctx, logoImg, x, y, size) { ctx.drawImage(logoImg, x, y, size, size); }
+function drawLogo(ctx, logoImg, x, y, size) {
+  if (logoImg) ctx.drawImage(logoImg, x, y, size, size);
+}
 
 function logoLockup(ctx, logoImg, x, y, size, word, color) {
   drawLogo(ctx, logoImg, x, y, size);
   if (!word) return size;
+  // Plenty of sites have no extractable mark. The wordmark alone is the
+  // fallback, so the lockup closes up rather than leaving a hole.
+  const off = logoImg ? size * 1.22 : 0;
   const fs = size * 0.72;
   ctx.font = fontStr(700, fs, UI_FONT); ctx.letterSpacing = '0px';
   ctx.fillStyle = color; ctx.textBaseline = 'middle';
-  ctx.fillText(word, x + size * 1.22, y + size / 2 + fs * 0.03);
+  ctx.fillText(word, x + off, y + size / 2 + fs * 0.03);
   ctx.textBaseline = 'top';
-  return size * 1.22 + ctx.measureText(word).width;
+  return off + ctx.measureText(word).width;
 }
 
 function paintField(ctx, W, H, theme, variant) {
@@ -221,8 +247,10 @@ function render(cv, W, H, arch, c, t, v) {
   const headIt = (k, s) => ({ fam: DISPLAY_FONT, weight: 700, size: F(s) * k, lh: 1.1, color: t.text, gap: F(5) * k });
   const subIt = (k, s) => ({ fam: UI_FONT, weight: 500, size: F(s) * k, lh: 1.36, color: t.muted, gap: F(6) * k });
 
-  const url = (x, y, size, align) => {
-    ctx.font = fontStr(600, size, UI_FONT); ctx.letterSpacing = '0px'; ctx.fillStyle = t.muted;
+  const url = (x, y, size, align, maxW) => {
+    const sz = fitSize(ctx, site, maxW == null ? 1e9 : maxW, size, size * 0.62, UI_FONT, 600);
+    if (!sz) return;                       // no room: the brand name still carries it
+    ctx.font = fontStr(600, sz, UI_FONT); ctx.letterSpacing = '0px'; ctx.fillStyle = t.muted;
     ctx.textAlign = align || 'left'; ctx.textBaseline = 'top';
     ctx.fillText(site, x, y); ctx.textAlign = 'left';
   };
@@ -256,7 +284,7 @@ function render(cv, W, H, arch, c, t, v) {
     let y = (H - total) / 2;
     y = stack.draw(tx, y) + F(4);
     const p = pill(ctx, c.cta_short, tx, y, ctaSize, F(12), ctaPadY, t.cta_bg, t.cta_fg, 'left', true);
-    url(tx + p.w + F(7), y + p.h / 2 - F(4.2), F(8.5));
+    url(tx + p.w + F(7), y + p.h / 2 - F(4.2), F(8.5), 'left', W - ph - p.w - F(20));
   }
 
   else if (arch === 'wide') {
@@ -280,7 +308,7 @@ function render(cv, W, H, arch, c, t, v) {
     // it tucks just inside it. Anchoring it left would land it on the headline.
     const cx = v.mirror ? W - ph - pad : W - pad;
     pill(ctx, c.cta_short, cx, (H - ctaH) / 2 - F(5), ctaSize, ctaPadX, ctaPadY, t.cta_bg, t.cta_fg, 'right', true);
-    url(cx, (H + ctaH) / 2 - F(2), F(9.5), 'right');
+    url(cx, (H + ctaH) / 2 - F(2), F(9.5), 'right', ctaW);
   }
 
   else if (arch === 'widetall') {
@@ -316,11 +344,13 @@ function render(cv, W, H, arch, c, t, v) {
       if (showSub) s.add(c.sub, subIt(k, 10.5));
       return s;
     }, availH - ctaH - F(7));
-    let y = ty + pad * 0.85;
-    stack.draw(pad, y);
     const cy = ty + (H - band) - pad * 0.9 - ctaH;
+    // Centre the wording in the space above the button; top-aligning it left a
+    // void whenever the headline was short and there was no sub-line.
+    const zoneTop = ty + pad * 0.85, zoneBot = cy - F(7);
+    stack.draw(pad, zoneTop + Math.max(0, (zoneBot - zoneTop - stack.h) / 2));
     const p = pill(ctx, c.cta_short, pad, cy, ctaSize, F(15), ctaPadY, t.cta_bg, t.cta_fg, 'left', true);
-    if (showUrl) url(W - pad, cy + p.h / 2 - F(4.3), F(8.6), 'right');
+    if (showUrl) url(W - pad, cy + p.h / 2 - F(4.3), F(8.6), 'right', W - pad * 2 - p.w - F(8));
   }
 
   else if (arch === 'landscape') {
@@ -343,7 +373,7 @@ function render(cv, W, H, arch, c, t, v) {
     stack.draw(tx, y);
     const cy = H - pad - ctaH;
     const p = pill(ctx, c.cta, tx, cy, ctaSize, F(18), ctaPadY, t.cta_bg, t.cta_fg, 'left', true);
-    url(tx + availW, cy + p.h / 2 - F(4.7), F(9.5), 'right');
+    url(tx + availW, cy + p.h / 2 - F(4.7), F(9.5), 'right', availW - p.w - F(10));
   }
 
   else if (arch === 'vertical') {
@@ -368,7 +398,7 @@ function render(cv, W, H, arch, c, t, v) {
     logoLockup(ctx, v.logo, pad, y, lock, v.brandName, t.text); y += lock + F(8);
     y = stack.draw(pad, y) + F(14);
     const p = pill(ctx, c.cta_short, pad, y, ctaSize, F(17), ctaPadY, t.cta_bg, t.cta_fg, 'left', true);
-    url(pad, y + p.h + F(7), F(9));
+    url(pad, y + p.h + F(7), F(9), 'left', W - pad * 2);
   }
 
   else if (arch === 'sky') {
@@ -391,85 +421,204 @@ function render(cv, W, H, arch, c, t, v) {
     const cw = ctaWidth(ctx, c.cta_short, ctaSize, F(12), false);
     const p = pill(ctx, c.cta_short, (W - cw) / 2, y, ctaSize, F(12), ctaPadY, t.cta_bg, t.cta_fg);
     y += p.h + F(7);
-    if (showUrl) { ctx.textAlign = 'center'; url(W / 2, y, F(8.2), 'center'); }
+    if (showUrl) { ctx.textAlign = 'center'; url(W / 2, y, F(8.2), 'center', W - pad); }
   }
   return cv;
 }
 
-function renderLogoAsset(cv, W, H, brand, logoImg) {
+function renderLogoAsset(cv, W, H, brandName, logoImg, theme) {
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fdf6ee'; ctx.fillRect(0, 0, W, H);
+  paintField(ctx, W, H, theme, 0);
   ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-  if (W === H) {
-    const m = 340, fs = 118;
-    ctx.font = fontStr(700, fs, UI_FONT);
-    const tw = ctx.measureText(brand.name).width;
-    ctx.drawImage(logoImg, (W - m) / 2, H / 2 - m / 2 - 60, m, m);
-    ctx.fillStyle = '#5b3a4a';
-    ctx.fillText(brand.name, (W - tw) / 2, H / 2 + m / 2 - 10);
+  const square = W === H;
+  const m = square ? 340 : 150;
+  let fs = square ? 118 : 108;
+  ctx.font = fontStr(700, fs, UI_FONT);
+  // A long brand name overruns a 4:1 plate — shrink to fit rather than clip.
+  const budget = square ? W * 0.86 : W - (logoImg ? m + 26 : 0) - 60;
+  while (ctx.measureText(brandName).width > budget && fs > 22) {
+    fs -= 2; ctx.font = fontStr(700, fs, UI_FONT);
+  }
+  const tw = ctx.measureText(brandName).width;
+  ctx.fillStyle = theme.text;
+  if (square) {
+    if (logoImg) ctx.drawImage(logoImg, (W - m) / 2, H / 2 - m / 2 - 60, m, m);
+    ctx.fillText(brandName, (W - tw) / 2, H / 2 + (logoImg ? m / 2 - 10 : 0));
   } else {
-    const m = 150, fs = 108;
-    ctx.font = fontStr(700, fs, UI_FONT);
-    const tw = ctx.measureText(brand.name).width;
-    const total = m + 26 + tw, x = (W - total) / 2;
-    ctx.drawImage(logoImg, x, (H - m) / 2, m, m);
-    ctx.fillStyle = '#5b3a4a';
-    ctx.fillText(brand.name, x + m + 26, H / 2 + 3);
+    const total = (logoImg ? m + 26 : 0) + tw, x = (W - total) / 2;
+    if (logoImg) ctx.drawImage(logoImg, x, (H - m) / 2, m, m);
+    ctx.fillText(brandName, x + (logoImg ? m + 26 : 0), H / 2 + 3);
   }
   return cv;
 }
 
-/* ------------------------------------------------------------- plan ----- */
+/* ------------------------------------------------------------ themes ---- */
+/* Red and black, as briefed. Two reds by necessity, not decoration: #ef3a41
+   clears AA on black at body size (5.06:1) so it can carry text, and #d01820
+   is dark enough that white clears AA on it (5.48:1) so it can carry a fill.
+   One red cannot do both jobs. Values sampled from the reference creatives. */
+const THEMES = {
+  onyx: {
+    fields: [
+      [['#0a090c', 0], ['#17171c', 0.6], ['#241d21', 1]],
+      [['#08070a', 0], ['#141319', 0.55], ['#2a1f24', 1]],
+      [['#0d0c10', 0], ['#1b1a20', 0.5], ['#312228', 1]],
+    ],
+    glow: 'rgba(224,27,34,0.26)',
+    text: '#f5f1ec', muted: '#b9b3b6', kick: '#ef3a41',
+    cta_bg: '#d01820', cta_fg: '#ffffff', wick: '#f5f1ec',
+  },
+  crimson: {
+    fields: [
+      [['#6d0810', 0], ['#a3101a', 0.6], ['#b01018', 1]],
+      [['#7a0912', 0], ['#9b0e18', 0.5], ['#8f0d16', 1]],
+      [['#5e070d', 0], ['#a3101a', 0.55], ['#c41320', 1]],
+    ],
+    glow: 'rgba(0,0,0,0.32)',
+    text: '#ffffff', muted: '#f4d9db', kick: '#ffd7d9',
+    cta_bg: '#f5f1ec', cta_fg: '#0a090c', wick: '#ffffff',
+  },
+  ink: {
+    fields: [
+      [['#000000', 0], ['#0e0e12', 0.6], ['#16161b', 1]],
+      [['#000000', 0], ['#120b0d', 0.5], ['#1d1216', 1]],
+      [['#050508', 0], ['#101015', 0.55], ['#1a1a20', 1]],
+    ],
+    glow: 'rgba(224,27,34,0.18)',
+    text: '#f5f1ec', muted: '#b9b3b6', kick: '#ef3a41',
+    cta_bg: '#f5f1ec', cta_fg: '#0a090c', wick: '#f5f1ec',
+  },
+};
+const THEME_NAMES = Object.keys(THEMES);
+
+/* ----------------------------------------------------------- duotone ---- */
+/* Photographs come from whatever site was scanned, lit however they were lit.
+   Mapping luminance onto one red/black ramp is what makes a stranger's photos
+   sit inside this palette. Done once per image at load, never per render. */
+const DUOTONE_RAMP = [['#07060a', 0], ['#5e0d15', 0.34], ['#c8202a', 0.66], ['#ffd2b4', 1]];
+
+function rampLUT(ramp) {
+  const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const stops = ramp.map(([c, p]) => ({ c: hex(c), p }));
+  const lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let a = stops[0], b = stops[stops.length - 1];
+    for (let s = 0; s < stops.length - 1; s++) {
+      if (t >= stops[s].p && t <= stops[s + 1].p) { a = stops[s]; b = stops[s + 1]; break; }
+    }
+    const span = (b.p - a.p) || 1, f = Math.min(1, Math.max(0, (t - a.p) / span));
+    for (let k = 0; k < 3; k++) lut[i * 3 + k] = Math.round(a.c[k] + (b.c[k] - a.c[k]) * f);
+  }
+  return lut;
+}
+const LUT = rampLUT(DUOTONE_RAMP);
+
+function duotone(img, maxSide = 1400) {
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+  const w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+  const h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  let d;
+  try { d = ctx.getImageData(0, 0, w, h); }
+  catch (e) { return cv; }             // tainted canvas — return the plain draw
+  const px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const l = (px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722) | 0;
+    px[i] = LUT[l * 3]; px[i + 1] = LUT[l * 3 + 1]; px[i + 2] = LUT[l * 3 + 2];
+  }
+  ctx.putImageData(d, 0, 0);
+  return cv;
+}
+
+/* --------------------------------------------------------- copy pools --- */
 function splitRef(text) {
   return String(text || '')
     .split(/[\n\r]+|(?<=[.!?])\s+/).map(s => s.trim())
     .filter(s => s.length > 2);
 }
 
-function buildPlan(seed, brand, prompts, refText, siteLabel) {
-  const r = mulberry32(seed);
+/* Build the wording pools from what the scan actually found on the page.
+   Nothing here is authored — every candidate is a whole heading, question or
+   sentence lifted from the site, plus whatever reference text was typed in. */
+function buildPools(scan, refText) {
   const ref = splitRef(refText);
-  const refShort = ref.filter(s => s.length <= 34);
-  const refMid = ref.filter(s => s.length > 12 && s.length <= 46);
-  const refLong = ref.filter(s => s.length > 40 && s.length <= 160);
-
-  // Reference lines are weighted so your own words actually show up.
-  const withRef = (pool, extra, weight) => {
-    if (!extra.length) return pool;
-    const out = pool.slice();
+  const w = (base, extra, weight) => {
+    const out = base.slice();
     for (let i = 0; i < weight; i++) out.push(...extra);
-    return out;
+    return out.length ? out : base;
   };
+  const fit = (arr, max) => arr.filter(s => s.length <= max);
 
-  const themeNames = shuffle(r, ['light', 'blush', 'dark']);
-  const angles = shuffle(r, prompts.angles).slice(0, 3);
-  const photoOrder = shuffle(r, brand.photos);
+  const heads = scan.headlinePool.length ? scan.headlinePool
+              : [scan.title, scan.brandName].filter(Boolean);
+  const subs = scan.subPool.length ? scan.subPool
+             : [scan.description].filter(Boolean);
+  const ctas = scan.ctaPool.length ? scan.ctaPool : ['Learn more'];
+  const kickers = scan.navItems.length ? scan.navItems : [scan.brandName];
 
-  return angles.map((a, i) => {
-    const tagged = photoOrder.filter(p => p.tags.includes(a.id));
-    const photo = tagged.length ? pick(r, tagged) : photoOrder[i % photoOrder.length];
-    return {
-      id: a.id, label: a.label,
-      themeName: themeNames[i % themeNames.length],
-      kicker: pick(r, a.kicker),
-      head: pick(r, withRef(a.head, refMid, 2)),
-      short: pick(r, withRef(a.short, refShort, 2)),
-      micro: pick(r, withRef(a.micro, refShort.filter(s => s.length <= 24), 2)),
-      sub: pick(r, withRef(a.sub, refLong, 2)),
-      cta: pick(r, a.cta),
-      cta_short: pick(r, a.cta_short),
-      photo,
-      variant: {
-        field: Math.floor(r() * 3),
-        mirror: r() < 0.5,
-        bandJit: r(),
-        fx: Math.min(1, Math.max(0, photo.focal[0] + (r() - 0.5) * 0.12)),
-        fy: Math.min(1, Math.max(0, photo.focal[1] + (r() - 0.5) * 0.12)),
-      },
-      site: siteLabel,
-    };
-  });
+  const pools = {
+    kicker: kickers,
+    head: w(fit(heads, 68), fit(ref, 68), 2),
+    short: w(fit(heads, 42), fit(ref, 42), 2),
+    micro: w(fit(heads, 26), fit(ref, 26), 2),
+    sub: w(fit(subs, 145), ref.filter(s => s.length > 30 && s.length <= 145), 2),
+    cta: fit(ctas, 26),
+    cta_short: fit(ctas, 16),
+  };
+  // Never hand an empty pool to pick(). Fall back up the chain.
+  if (!pools.head.length) pools.head = [scan.title || scan.brandName];
+  if (!pools.short.length) pools.short = fit(pools.head, 68).length ? pools.head : [scan.brandName];
+  if (!pools.micro.length) pools.micro = [scan.brandName];
+  if (!pools.sub.length) pools.sub = [scan.description || scan.title || ''].filter(Boolean);
+  if (!pools.cta.length) pools.cta = ['Learn more'];
+  if (!pools.cta_short.length) pools.cta_short = pools.cta.slice();
+  if (!pools.kicker.length) pools.kicker = [scan.brandName];
+  return pools;
+}
+
+/* One image = one job. Sizes and the number of variations are chosen in the
+   UI, so a job is addressed by (size index, variation index) and reproducible
+   from the run seed. */
+function makeJob(scan, pools, runSeed, sizeSpec, sizeIdx, varIdx, salt) {
+  const [W, H, arch, slot] = sizeSpec;
+  const seed = (Math.imul(runSeed ^ (sizeIdx + 1), 0x9E3779B1) ^
+                Math.imul(varIdx + 1, 0x85EBCA6B) ^ (salt || 0)) >>> 0;
+  const r = mulberry32(seed);
+
+  const photo = scan.photos.length ? scan.photos[Math.floor(r() * scan.photos.length)] : null;
+  // Variations of one size step through the themes so two proofs of the same
+  // slot never come back looking like the same ad.
+  const theme = THEMES[THEME_NAMES[(varIdx + Math.floor(r() * THEME_NAMES.length)) % THEME_NAMES.length]];
+
+  return {
+    W, H, arch, slot, sizeIdx, varIdx, seed,
+    theme,
+    copy: {
+      kicker: pick(r, pools.kicker),
+      head: pick(r, pools.head),
+      short: pick(r, pools.short),
+      micro: pick(r, pools.micro),
+      sub: pick(r, pools.sub),
+      cta: pick(r, pools.cta),
+      cta_short: pick(r, pools.cta_short),
+    },
+    variant: {
+      img: photo ? photo.canvas : null,
+      logo: scan.logoCanvas || null,
+      brandName: scan.brandName,
+      site: scan.host,
+      field: Math.floor(r() * 3),
+      mirror: r() < 0.5,
+      bandJit: r(),
+      fx: 0.5 + (r() - 0.5) * 0.3,
+      fy: 0.45 + (r() - 0.5) * 0.3,
+    },
+  };
 }
 
 /* -------------------------------------------------------------- zip ----- */

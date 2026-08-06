@@ -3,3 +3,10 @@
 @font-face{font-family:'Quicksand';font-style:normal;font-weight:500;font-display:block;src:url('fonts/Quicksand-500.woff2') format('woff2')}
 @font-face{font-family:'Quicksand';font-style:normal;font-weight:600;font-display:block;src:url('fonts/Quicksand-600.woff2') format('woff2')}
 @font-face{font-family:'Quicksand';font-style:normal;font-weight:700;font-display:block;src:url('fonts/Quicksand-700.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/Archivo-400.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/Archivo-500.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/Archivo-600.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/Archivo-700.woff2') format('woff2')}
+@font-face{font-family:'Archivo';font-style:normal;font-weight:800;font-display:swap;src:url('fonts/Archivo-800.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/SpaceMono-400.woff2') format('woff2')}
+@font-face{font-family:'Space Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/SpaceMono-700.woff2') format('woff2')}
