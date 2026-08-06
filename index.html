@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Ad Press — display ads from any website</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a090c'/%3E%3Crect x='6' y='9' width='20' height='7' fill='%23ef3a41'/%3E%3Crect x='6' y='19' width='12' height='4' fill='%23f5f1ec'/%3E%3C/svg%3E">
+<title>Ad Press</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23e5252c'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -13,84 +13,84 @@
 
 <header class="deck">
   <div class="wrap">
-    <div class="brandbar">
-      <span class="mark" aria-hidden="true"></span>
-      <span class="name">Ad Press</span>
-      <span class="tag">display ads, read off the page</span>
+    <div class="bar">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="nm">Ad Press</span>
+      <span class="sub">reads the site, then draws</span>
     </div>
 
-    <h1>Point it at a website.<br><em>It reads the site first.</em></h1>
-    <p class="lede">Every word, photograph and logo in the output is lifted from the page
-      you give it. Nothing is written in advance. Pick the sizes you actually want and
-      how many versions of each.</p>
-
     <form id="form" novalidate>
-      <div class="field">
-        <label for="site">Website</label>
-        <div class="inline">
+      <div class="row1">
+        <div class="f">
+          <label for="site">Website</label>
           <input id="site" type="url" inputmode="url" spellcheck="false" autocomplete="off"
-                 placeholder="https://example.com" value="https://ribboncera.sfo3.digitaloceanspaces.com/index.html">
-          <button id="scan" type="submit" class="btn primary">Read the site</button>
+                 placeholder="https://example.com">
         </div>
-        <p class="hint" id="scanhint">The page is fetched server-side, so any public URL works.</p>
+        <button id="scan" type="submit" class="btn primary">Read it</button>
       </div>
-
-      <div class="field">
-        <label for="ref">Reference text <span class="opt">optional</span></label>
-        <textarea id="ref" rows="2" spellcheck="false"
-          placeholder="Anything you want the ads to say. Your lines get used ahead of the site's own."></textarea>
+      <div class="f">
+        <label for="ref">Your own line <span class="o">optional</span></label>
+        <input id="ref" type="text" spellcheck="false"
+               placeholder="One short line to use instead of the site's own">
       </div>
+      <p class="hint" id="scanhint">Any public URL.</p>
     </form>
   </div>
 </header>
 
-<section id="found" class="found" hidden>
+<section id="found" class="panel" hidden>
   <div class="wrap">
-    <h2 class="sect">What it found</h2>
-    <div class="foundgrid" id="foundgrid"></div>
-    <details class="copyout" id="copyout">
-      <summary>The wording it will draw from</summary>
-      <div id="copylists"></div>
-    </details>
+    <div class="fgrid" id="fgrid"></div>
   </div>
 </section>
 
-<section id="setup" class="setup" hidden>
+<section id="setup" class="panel setup" hidden>
   <div class="wrap">
-    <h2 class="sect">Sizes</h2>
-    <div class="presets" role="group" aria-label="Size presets">
-      <button type="button" class="chip" data-preset="common">Most used</button>
-      <button type="button" class="chip" data-preset="all">Everything</button>
-      <button type="button" class="chip" data-preset="none">Clear</button>
-    </div>
-    <div id="sizes" class="sizegroups"></div>
+    <div class="cols">
+      <div>
+        <h2 class="lab">Ratios</h2>
+        <div id="ratios" class="ratios"></div>
+        <p class="foot" id="rationote"></p>
+      </div>
+      <div>
+        <h2 class="lab">Text on the image</h2>
+        <div id="textmodes" class="modes"></div>
+        <p class="foot" id="modenote"></p>
 
-    <div class="controls">
-      <div class="stepper">
-        <span class="lab">Versions of each size</span>
-        <div class="steps" id="pervals" role="group" aria-label="Versions per size"></div>
-      </div>
-      <div class="tally">
-        <output id="tally" for="sizes pervals">nothing selected</output>
-        <div class="go">
-          <button id="go" type="button" class="btn primary" disabled>Generate</button>
-          <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
-        </div>
+        <h2 class="lab sp">Versions each</h2>
+        <div id="pervals" class="steps" role="group" aria-label="Versions per ratio"></div>
       </div>
     </div>
-    <div class="bar" id="bar" hidden><i id="barfill"></i></div>
+
+    <div class="act">
+      <output id="tally">nothing selected</output>
+      <div class="go">
+        <button id="go" type="button" class="btn primary" disabled>Generate</button>
+        <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
+      </div>
+    </div>
+    <div class="prog" id="prog" hidden><i id="progfill"></i></div>
   </div>
+</section>
+
+<section id="verdict" class="panel verdict" hidden>
+  <div class="wrap"><div id="vgrid" class="vgrid"></div></div>
 </section>
 
 <main id="out" class="proof"></main>
 
 <footer>
   <div class="wrap">
-    <p>Images are exact Google Display slot sizes and stay under the 150&nbsp;KB upload
-      limit. <span id="statusline">Ready.</span></p>
+    <details id="rules">
+      <summary>What this follows, and what it refuses</summary>
+      <div id="rulebody"></div>
+    </details>
   </div>
 </footer>
 
+<script src="spec.js"></script>
+<script src="compose.js"></script>
+<script src="check.js"></script>
 <script src="app.js"></script>
 <script type="module" src="ui.js"></script>
 </body>

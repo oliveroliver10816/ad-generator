@@ -1,350 +1,325 @@
 import { scanSite } from './scan.js';
 
 const $ = (id) => document.getElementById(id);
-const els = {
+const E = {
   form: $('form'), site: $('site'), ref: $('ref'), scan: $('scan'), hint: $('scanhint'),
-  found: $('found'), foundgrid: $('foundgrid'), copyout: $('copyout'), copylists: $('copylists'),
-  setup: $('setup'), sizes: $('sizes'), pervals: $('pervals'), tally: $('tally'),
-  go: $('go'), dlall: $('dlall'), bar: $('bar'), barfill: $('barfill'),
-  out: $('out'), status: $('statusline'),
+  found: $('found'), fgrid: $('fgrid'), setup: $('setup'), ratios: $('ratios'),
+  rationote: $('rationote'), textmodes: $('textmodes'), modenote: $('modenote'),
+  pervals: $('pervals'), tally: $('tally'), go: $('go'), dlall: $('dlall'),
+  prog: $('prog'), progfill: $('progfill'), verdict: $('verdict'), vgrid: $('vgrid'),
+  out: $('out'), rulebody: $('rulebody'),
 };
 
-const GROUPS = [
-  ['Rectangles', [[300, 250], [336, 280], [250, 250], [200, 200], [580, 400]]],
-  ['Leaderboards', [[728, 90], [970, 250], [930, 180], [970, 90], [980, 120], [468, 60]]],
-  ['Skyscrapers', [[300, 600], [160, 600], [120, 600], [300, 1050], [240, 400], [250, 360]]],
-  ['Mobile', [[320, 100], [320, 50], [300, 50]]],
-  ['Responsive display', [[1200, 628], [1200, 1200]]],
-  ['Logo assets', [[1200, 1200, 'logo'], [1200, 300, 'logo']]],
-];
-const COMMON = ['300x250', '336x280', '728x90', '300x600', '160x600', '320x100', '970x250', '320x50'];
+const S = {
+  scan: null, pools: null, per: 3, mode: 'brand',
+  chosen: new Set(['1x1', '1.91x1', '4x5']), recs: [], seed: 0,
+};
+const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const state = { scan: null, pools: null, per: 2, chosen: new Set(COMMON), jobs: [], seed: 0 };
-
-const key = (w, h, kind) => `${w}x${h}${kind === 'logo' ? 'L' : ''}`;
-const say = (m) => { els.status.textContent = m; };
-const specFor = (w, h) => SIZES.find(s => s[0] === w && s[1] === h);
-
-/* ------------------------------------------------------------ picker --- */
-function buildPicker() {
-  els.sizes.innerHTML = '';
-  for (const [title, list] of GROUPS) {
-    const g = document.createElement('div');
-    g.className = 'sgroup';
-    g.innerHTML = `<h3>${title}</h3><div class="tiles"></div>`;
-    const tiles = g.querySelector('.tiles');
-    for (const [w, h, kind] of list) {
-      const k = key(w, h, kind);
-      const box = 54, sc = Math.min(box / w, box / h);
-      const t = document.createElement('label');
-      t.className = 'tile';
-      t.dataset.on = state.chosen.has(k) ? '1' : '0';
-      t.innerHTML =
-        `<input type="checkbox" ${state.chosen.has(k) ? 'checked' : ''} aria-label="${w} by ${h}${kind === 'logo' ? ' logo' : ''}">
-         <span class="shapebox"><span class="shape" style="width:${Math.max(6, w * sc)}px;height:${Math.max(4, h * sc)}px"></span></span>
-         <span class="dim">${w}&times;${h}</span>`;
-      const cb = t.querySelector('input');
-      cb.addEventListener('change', () => {
-        if (cb.checked) state.chosen.add(k); else state.chosen.delete(k);
-        t.dataset.on = cb.checked ? '1' : '0';
-        tally();
-      });
-      tiles.appendChild(t);
-    }
-    els.sizes.appendChild(g);
-  }
-}
-
-function buildStepper() {
-  els.pervals.innerHTML = '';
-  for (const n of [1, 2, 3, 4, 5, 6]) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.textContent = n;
-    b.setAttribute('aria-pressed', String(n === state.per));
-    b.addEventListener('click', () => {
-      state.per = n;
-      [...els.pervals.children].forEach(c => c.setAttribute('aria-pressed', String(c.textContent === String(n))));
+/* ------------------------------------------------------------ controls -- */
+function buildRatios() {
+  E.ratios.innerHTML = '';
+  for (const a of ASPECTS) {
+    const box = 46, sc = Math.min(box / a.w, box / a.h);
+    const el = document.createElement('label');
+    el.className = 'rt';
+    el.dataset.on = S.chosen.has(a.key) ? '1' : '0';
+    el.title = a.used + (a.note ? ' — ' + a.note : '');
+    el.innerHTML =
+      `<input type="checkbox" ${S.chosen.has(a.key) ? 'checked' : ''} aria-label="${a.label} ${a.key}">
+       ${a.warn ? '<span class="flag" title="not a Google image-asset ratio"></span>' : ''}
+       <span class="box"><span class="sh" style="width:${Math.max(7, a.w * sc)}px;height:${Math.max(5, a.h * sc)}px"></span></span>
+       <span class="n">${a.key.replace('x', ':')}</span>
+       <span class="p">${a.w}&times;${a.h}</span>`;
+    const cb = el.querySelector('input');
+    cb.addEventListener('change', () => {
+      cb.checked ? S.chosen.add(a.key) : S.chosen.delete(a.key);
+      el.dataset.on = cb.checked ? '1' : '0';
       tally();
     });
-    els.pervals.appendChild(b);
+    E.ratios.appendChild(el);
+  }
+  E.rationote.innerHTML = ASPECT_NOTES
+    .map(n => `<b>${esc(n.asked)}</b> — ${esc(n.verdict)} ${esc(n.detail)}`).join('<br><br>');
+}
+
+function buildModes() {
+  E.textmodes.innerHTML = '';
+  for (const [key, m] of Object.entries(TEXT_MODES)) {
+    const el = document.createElement('label');
+    el.className = 'md';
+    el.dataset.on = S.mode === key ? '1' : '0';
+    el.innerHTML = `<input type="radio" name="tm" value="${key}" ${S.mode === key ? 'checked' : ''}>
+      <span><span class="t">${esc(m.label)}</span><span class="d">${esc(m.detail)}</span></span>`;
+    el.querySelector('input').addEventListener('change', () => {
+      S.mode = key;
+      [...E.textmodes.children].forEach(c =>
+        c.dataset.on = c.querySelector('input').checked ? '1' : '0');
+      save();
+    });
+    E.textmodes.appendChild(el);
+  }
+  E.modenote.textContent = CTA_POLICY.ruling + ' ' + CTA_POLICY.instead;
+}
+
+function buildSteps() {
+  E.pervals.innerHTML = '';
+  for (const n of [1, 2, 3, 4, 5, 6, 8]) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = n;
+    b.setAttribute('aria-pressed', String(n === S.per));
+    b.addEventListener('click', () => {
+      S.per = n;
+      [...E.pervals.children].forEach(c => c.setAttribute('aria-pressed', String(c.textContent === String(n))));
+      tally();
+    });
+    E.pervals.appendChild(b);
   }
 }
 
 function tally() {
-  const n = state.chosen.size, total = n * state.per;
-  els.tally.textContent = n
-    ? `${n} size${n === 1 ? '' : 's'} × ${state.per} = ${total} image${total === 1 ? '' : 's'}`
-    : 'nothing selected';
-  els.go.disabled = !n || !state.scan;
+  const n = S.chosen.size, t = n * S.per;
+  E.tally.textContent = n ? `${n} ratio${n === 1 ? '' : 's'} × ${S.per} = ${t} image${t === 1 ? '' : 's'}`
+                          : 'nothing selected';
+  E.go.disabled = !n || !S.scan;
   save();
 }
 
-function applyPreset(p) {
-  state.chosen.clear();
-  if (p === 'all') for (const [, list] of GROUPS) for (const [w, h, k] of list) state.chosen.add(key(w, h, k));
-  if (p === 'common') COMMON.forEach(k => state.chosen.add(k));
-  buildPicker(); tally();
-}
-
-/* ------------------------------------------------------------- store --- */
 function save() {
   try {
-    localStorage.setItem('adpress', JSON.stringify({
-      site: els.site.value, ref: els.ref.value,
-      per: state.per, chosen: [...state.chosen],
-    }));
+    localStorage.setItem('adpress2', JSON.stringify({
+      site: E.site.value, ref: E.ref.value, per: S.per, mode: S.mode, chosen: [...S.chosen] }));
   } catch (e) {}
 }
 function restore() {
   try {
-    const s = JSON.parse(localStorage.getItem('adpress') || '{}');
-    if (s.site) els.site.value = s.site;
-    if (s.ref) els.ref.value = s.ref;
-    if (s.per) state.per = s.per;
-    if (Array.isArray(s.chosen) && s.chosen.length) state.chosen = new Set(s.chosen);
+    const s = JSON.parse(localStorage.getItem('adpress2') || '{}');
+    if (s.site) E.site.value = s.site;
+    if (s.ref) E.ref.value = s.ref;
+    if (s.per) S.per = s.per;
+    if (s.mode && TEXT_MODES[s.mode]) S.mode = s.mode;
+    if (Array.isArray(s.chosen) && s.chosen.length) S.chosen = new Set(s.chosen);
   } catch (e) {}
 }
 
-/* -------------------------------------------------------------- scan --- */
-function card(k, v, small, extra) {
+/* ---------------------------------------------------------------- scan -- */
+function fc(k, v, small, extra) {
   const d = document.createElement('div');
-  d.className = 'fcard' + (v ? '' : ' miss');
-  d.innerHTML = `<div class="k">${k}</div><div class="v${small ? ' sm' : ''}">${v || 'none found'}</div>`;
+  d.className = 'fc' + (v ? '' : ' none');
+  d.innerHTML = `<div class="k">${k}</div><div class="v${small ? ' sm' : ''}">${esc(v || 'none')}</div>`;
   if (extra) d.appendChild(extra);
   return d;
 }
 
 function showFound(s) {
-  els.foundgrid.innerHTML = '';
-  els.foundgrid.appendChild(card('Brand', s.brandName));
-  els.foundgrid.appendChild(card('What it is about', s.description || s.title, true));
-
-  const thumbs = document.createElement('div');
-  thumbs.className = 'thumbs';
+  E.fgrid.innerHTML = '';
+  E.fgrid.appendChild(fc('Brand', s.brandName));
+  E.fgrid.appendChild(fc('About', s.description || s.title, true));
+  const tb = document.createElement('div');
+  tb.className = 'tb';
   s.photos.slice(0, 8).forEach(p => {
     const c = document.createElement('canvas');
-    c.width = 88; c.height = 64;
-    c.getContext('2d').drawImage(p.canvas, 0, 0, 88, 64);
-    thumbs.appendChild(c);
+    c.width = 80; c.height = 60;
+    c.getContext('2d').drawImage(p.treated, 0, 0, 80, 60);
+    tb.appendChild(c);
   });
-  els.foundgrid.appendChild(card('Photographs', s.photos.length ? `${s.photos.length} usable` : '', false,
-    s.photos.length ? thumbs : null));
-
-  const lg = document.createElement('div');
-  if (s.logoCanvas) {
-    lg.className = 'thumbs';
-    const c = document.createElement('canvas');
-    c.width = 44; c.height = 32;
-    const x = c.getContext('2d');
-    x.fillStyle = '#0a090c'; x.fillRect(0, 0, 44, 32);
-    x.drawImage(s.logoCanvas, 6, 0, 32, 32);
-    lg.appendChild(c);
-  }
-  els.foundgrid.appendChild(card('Logo', s.logoCanvas ? 'found on the page' : '', true, s.logoCanvas ? lg : null));
-  els.foundgrid.appendChild(card('Typefaces',
-    [s.fonts.display, s.fonts.ui].filter(Boolean).join(' · ') || 'site fonts unavailable — using defaults', true));
-  els.foundgrid.appendChild(card('Wording found',
-    `${s.counts.headlines} headlines · ${s.counts.subs} lines · ${s.counts.ctas} buttons`, true));
-
-  const sec = (t, arr) => arr.length
-    ? `<h4>${t}</h4><ul>${arr.slice(0, 10).map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : '';
-  els.copylists.innerHTML =
-    sec('Headlines', s.headlinePool) + sec('Supporting lines', s.subPool) + sec('Buttons', s.ctaPool);
-  els.found.hidden = false;
-  els.setup.hidden = false;
+  E.fgrid.appendChild(fc('Photographs', s.photos.length ? String(s.photos.length) : '', false,
+    s.photos.length ? tb : null));
+  E.fgrid.appendChild(fc('Lines available', `${s.counts.headlines} headlines`, true));
+  E.found.hidden = false; E.setup.hidden = false;
 }
-
-const escapeHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function doScan(ev) {
   if (ev) ev.preventDefault();
-  const url = els.site.value.trim();
-  if (!url) { els.hint.textContent = 'Enter a website address first.'; els.hint.className = 'hint bad'; return; }
-  els.scan.disabled = true; els.go.disabled = true; els.dlall.disabled = true;
-  els.hint.className = 'hint';
-  els.out.innerHTML = ''; state.jobs = [];
+  const url = E.site.value.trim();
+  if (!url) { E.hint.textContent = 'Enter an address first.'; E.hint.className = 'hint bad'; return; }
+  E.scan.disabled = true; E.go.disabled = true; E.dlall.disabled = true;
+  E.hint.className = 'hint'; E.out.innerHTML = ''; E.verdict.hidden = true; S.recs = [];
   try {
-    const s = await scanSite(url, (m) => { els.hint.textContent = m + '…'; say(m); });
+    const s = await scanSite(url, (m) => { E.hint.textContent = m + '…'; });
     if (!s.headlinePool.length && !s.photos.length) {
-      throw new Error('nothing usable on that page — it may render its content with JavaScript');
+      throw new Error('nothing usable — the page may build its content with JavaScript');
     }
-    // Duotone every photo once, so a stranger's photography lands in this palette.
-    s.photos.forEach(p => { p.canvas = duotone(p.img); });
-    if (s.logoSvg) {
-      try { s.logoCanvas = await svgToImage(s.logoSvg); } catch (e) { s.logoCanvas = null; }
-    } else if (s.logoImg) {
-      s.logoCanvas = s.logoImg;
-    }
-    if (s.fonts.display) DISPLAY_FONT = s.fonts.display;
-    if (s.fonts.ui) UI_FONT = s.fonts.ui;
-    state.scan = s;
-    state.pools = buildPools(s, els.ref.value);
+    s.photos.forEach(p => { p.treated = treatPhoto(p.img); });
+    S.scan = s;
+    S.pools = buildPools(s, E.ref.value);
     showFound(s);
-    els.hint.textContent = `Read ${s.host} — ${s.counts.headlines} headlines, ${s.photos.length} photographs.`;
-    say(`Read ${s.host}.`);
-    els.setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    E.hint.textContent = `${s.host} · ${s.photos.length} photographs · ${s.counts.headlines} lines`;
+    E.setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
-    els.hint.textContent = 'Could not read that site: ' + e.message;
-    els.hint.className = 'hint bad';
-    say('Scan failed.');
+    E.hint.textContent = 'Could not read that site: ' + e.message;
+    E.hint.className = 'hint bad';
   }
-  els.scan.disabled = false;
-  tally();
+  E.scan.disabled = false; tally();
 }
 
-function svgToImage(svg) {
-  return new Promise((res, rej) => {
-    const im = new Image();
-    im.onload = () => res(im);
-    im.onerror = () => rej(new Error('svg'));
-    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-  });
-}
-
-/* --------------------------------------------------------- generate ---- */
-const yieldFrame = () => new Promise(r => requestAnimationFrame(() => r()));
-
-function chosenSpecs() {
-  const out = [];
-  for (const [, list] of GROUPS) {
-    for (const [w, h, kind] of list) {
-      const k = key(w, h, kind);
-      if (!state.chosen.has(k)) continue;
-      if (kind === 'logo') out.push({ logo: true, W: w, H: h, slot: `Logo ${w === h ? '1:1' : '4:1'}`, k });
-      else { const s = specFor(w, h); if (s) out.push({ logo: false, spec: s, k }); }
-    }
-  }
-  return out;
-}
-
-async function drawInto(cv, job) {
-  if (job.logo) {
-    renderLogoAsset(cv, job.W, job.H, state.scan.brandName, state.scan.logoCanvas || null, job.theme);
-  } else {
-    render(cv, job.W, job.H, job.arch, job.copy, job.theme, job.variant);
-  }
-  return canvasToBlob(cv, `${job.W}x${job.H}`);
-}
-
-function makeLogoJob(runSeed, idx, varIdx, W, H, slot, salt) {
-  const r = mulberry32((Math.imul(runSeed ^ (idx + 1), 0x9E3779B1) ^ (varIdx + 1) ^ (salt || 0)) >>> 0);
-  const names = Object.keys(THEMES);
-  return { logo: true, W, H, slot, sizeIdx: idx, varIdx, theme: THEMES[names[Math.floor(r() * names.length)]] };
-}
-
-async function generate() {
-  const specs = chosenSpecs();
-  if (!specs.length || !state.scan) return;
-  els.go.disabled = true; els.dlall.disabled = true;
-  els.out.innerHTML = ''; state.jobs = [];
-  window.__fitMisses = [];
-  state.seed = (Math.random() * 4294967296) >>> 0;
-  state.pools = buildPools(state.scan, els.ref.value);
-
-  const total = specs.length * state.per;
-  let done = 0;
-  els.bar.hidden = false; els.barfill.style.width = '0%';
-
-  const group = document.createElement('section');
-  group.className = 'rungroup';
-  group.innerHTML = `<div class="wrap"><div class="runhead">
-      <h2>${escapeHtml(state.scan.brandName)}</h2>
-      <span class="meta">${state.scan.host} · ${total} image${total === 1 ? '' : 's'} · seed ${state.seed}</span>
-    </div><div class="grid"></div></div>`;
-  els.out.appendChild(group);
-  const grid = group.querySelector('.grid');
-
-  for (let si = 0; si < specs.length; si++) {
-    for (let vi = 0; vi < state.per; vi++) {
-      const s = specs[si];
-      const job = s.logo
-        ? makeLogoJob(state.seed, si, vi, s.W, s.H, s.slot, 0)
-        : Object.assign(makeJob(state.scan, state.pools, state.seed, s.spec, si, vi, 0), { logo: false });
-      const cv = document.createElement('canvas');
-      const out = await drawInto(cv, job);
-      const rec = { job, cv, out, si, vi, spec: s, salt: 0 };
-      state.jobs.push(rec);
-      grid.appendChild(cardFor(rec));
-      done++;
-      els.barfill.style.width = `${(done / total) * 100}%`;
-      if (done % 3 === 0) { say(`Drawing ${done}/${total}`); await yieldFrame(); }
-    }
-  }
-
-  els.bar.hidden = true;
-  const misses = window.__fitMisses.length;
-  say(`${total} image${total === 1 ? '' : 's'} ready${misses ? ` · ${misses} needed shrinking` : ''}.`);
-  els.go.disabled = false; els.dlall.disabled = false;
-}
+/* ----------------------------------------------------------- generate -- */
+const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+const chosenAspects = () => ASPECTS.filter(a => S.chosen.has(a.key));
 
 function fileName(rec) {
-  const host = state.scan.host.replace(/\./g, '-');
-  const ext = rec.out.name.split('.').pop();
-  return `${host}-${rec.job.W}x${rec.job.H}-v${rec.vi + 1}.${ext}`;
+  const host = S.scan.host.replace(/\./g, '-');
+  return `${host}-${rec.job.W}x${rec.job.H}-${rec.job.aspect.key}-v${rec.vi + 1}.${rec.out.ext}`;
+}
+
+/* Build one image. If it comes back flagged — almost always because the
+   photograph that slot drew has very little light in it — try a different
+   photograph rather than shipping the flagged frame. */
+async function buildOne(aspect, ai, vi, salt, avoid) {
+  let best = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const useSalt = (salt + attempt * 0x9E37) >>> 0;
+    const job = makeJob(S.scan, S.pools, S.seed, aspect, ai, vi, useSalt, avoid);
+    const cv = document.createElement('canvas');
+    const report = renderAd(cv, job, S.mode);
+    const out = await canvasToBlob(cv, `${job.W}x${job.H}`);
+    const check = checkImage(cv, job, report, out.bytes);
+    const rec = { job, report, out, check, ai, vi, aspect, salt: useSalt, cv };
+    if (!best || check.issues.length < best.check.issues.length) best = rec;
+    if (!check.issues.length) break;
+  }
+  if (avoid) avoid.add(best.job.headline);
+  (window.__lits = window.__lits || []).push([best.report.litPhoto || 0, best.report.litFinal || 0]);
+  return best;
 }
 
 function cardFor(rec) {
   const c = document.createElement('div');
   c.className = 'card';
-  const shell = document.createElement('div');
-  shell.className = 'shell';
-  rec.cv.style.width = Math.min(rec.job.W, 520) + 'px';
-  shell.appendChild(rec.cv);
+  const shown = Math.min(rec.job.W, rec.job.W / rec.job.H > 1.6 ? 460 : 300);
+  const img = document.createElement('img');
+  img.width = shown; img.height = Math.round(shown * rec.job.H / rec.job.W);
+  img.alt = `${rec.job.aspect.label} ad`;
+  img.src = URL.createObjectURL(rec.out.blob);
   const row = document.createElement('div');
-  row.className = 'row';
-  row.innerHTML = `<span class="spec"><b>${rec.job.W}&times;${rec.job.H}</b> ${rec.job.slot || ''} · ${Math.round(rec.out.bytes / 1024)} KB</span>`;
+  row.className = 'r';
+  const spec = document.createElement('span');
+  spec.className = 's';
+  const setSpec = () => {
+    const bad = rec.check.issues.length;
+    spec.innerHTML = `<b>${rec.job.W}&times;${rec.job.H}</b> · ${Math.round(rec.out.bytes / 1024)} KB · ` +
+      `text ${(rec.check.coverage * 100).toFixed(1)}%` +
+      (bad ? ` · <span class="bad">${bad} issue${bad === 1 ? '' : 's'}</span>` : '');
+    spec.title = bad ? rec.check.issues.join('\n') : 'passes every mechanical check';
+  };
+  setSpec();
   const acts = document.createElement('div');
   acts.className = 'acts';
   const again = document.createElement('button');
-  again.type = 'button'; again.textContent = 'Another version';
+  again.type = 'button'; again.textContent = 'Again';
   const a = document.createElement('a');
   a.className = 'save'; a.textContent = 'Save';
-  a.href = URL.createObjectURL(rec.out.blob); a.download = fileName(rec);
-  acts.appendChild(again); acts.appendChild(a);
-  row.appendChild(acts);
-  c.appendChild(shell); c.appendChild(row);
+  a.href = img.src; a.download = fileName(rec);
+  acts.append(again, a);
+  row.append(spec, acts);
+  c.append(img, row);
 
   again.addEventListener('click', async () => {
     again.disabled = true;
-    rec.salt = (rec.salt + 1 + ((Math.random() * 1e6) | 0)) >>> 0;
-    rec.job = rec.spec.logo
-      ? makeLogoJob(state.seed, rec.si, rec.vi, rec.spec.W, rec.spec.H, rec.spec.slot, rec.salt)
-      : Object.assign(makeJob(state.scan, state.pools, state.seed, rec.spec.spec, rec.si, rec.vi, rec.salt), { logo: false });
-    URL.revokeObjectURL(a.href);
-    rec.out = await drawInto(rec.cv, rec.job);
-    a.href = URL.createObjectURL(rec.out.blob); a.download = fileName(rec);
-    row.querySelector('.spec').innerHTML =
-      `<b>${rec.job.W}&times;${rec.job.H}</b> ${rec.job.slot || ''} · ${Math.round(rec.out.bytes / 1024)} KB`;
+    URL.revokeObjectURL(img.src);
+    const next = await buildOne(rec.aspect, rec.ai, rec.vi, (rec.salt + 1 + ((Math.random() * 1e6) | 0)) >>> 0, new Set(S.recs.map(x => x.job.headline)));
+    Object.assign(rec, next);
+    img.src = URL.createObjectURL(rec.out.blob);
+    a.href = img.src; a.download = fileName(rec);
+    setSpec(); showVerdict();
     again.disabled = false;
   });
   return c;
 }
 
-/* -------------------------------------------------------------- zip ---- */
-els.dlall.addEventListener('click', async () => {
-  if (!state.jobs.length) return;
-  els.dlall.disabled = true; say('Packing…');
-  const files = [];
-  for (const rec of state.jobs) {
-    files.push({ name: fileName(rec), data: new Uint8Array(await rec.out.blob.arrayBuffer()) });
+function showVerdict() {
+  const recs = S.recs;
+  if (!recs.length) { E.verdict.hidden = true; return; }
+  const issues = recs.reduce((n, r) => n + r.check.issues.length, 0);
+  const cover = Math.max(...recs.map(r => r.check.coverage));
+  const contrasts = recs.flatMap(r => r.report.contrasts.map(c => c.ratio));
+  const minC = contrasts.length ? Math.min(...contrasts) : null;
+  const clashes = checkRunUniqueness(recs, 6);
+  const maxKB = Math.max(...recs.map(r => r.out.bytes)) / 1024;
+
+  const cell = (k, n, ok) =>
+    `<div class="v ${ok ? 'pass' : 'fail'}"><span class="k">${k}</span><span class="n">${n}</span></div>`;
+  E.vgrid.innerHTML =
+    cell('Checks failed', String(issues), issues === 0) +
+    cell('Most text on one image', `${(cover * 100).toFixed(1)}% / 20%`, cover <= TEXT_LIMITS.maxCoverage) +
+    (minC == null ? cell('Text contrast', 'no text', true)
+                  : cell('Lowest text contrast', `${minC.toFixed(1)}:1`, minC >= 4.5)) +
+    cell('Near-duplicates', String(clashes.length), clashes.length === 0) +
+    cell('Largest file', `${maxKB.toFixed(0)} KB / 5120`, maxKB * 1024 <= FILE_RULES.maxBytes) +
+    cell('Buttons drawn', recs.some(r => r.report.drewButton) ? 'yes' : 'none',
+         !recs.some(r => r.report.drewButton));
+  E.verdict.hidden = false;
+}
+
+async function generate() {
+  const aspects = chosenAspects();
+  if (!aspects.length || !S.scan) return;
+  E.go.disabled = true; E.dlall.disabled = true;
+  E.out.innerHTML = ''; S.recs = []; E.verdict.hidden = true; window.__lits = [];
+  S.seed = (Math.random() * 4294967296) >>> 0;
+  S.pools = buildPools(S.scan, E.ref.value);
+
+  const total = aspects.length * S.per;
+  const used = new Set();
+  let done = 0;
+  E.prog.hidden = false; E.progfill.style.width = '0%';
+
+  const run = document.createElement('section');
+  run.className = 'run';
+  run.innerHTML = `<div class="wrap"><div class="rh">
+      <h2>${esc(S.scan.brandName)}</h2>
+      <span class="m">${esc(S.scan.host)} · ${total} image${total === 1 ? '' : 's'} · ${esc(TEXT_MODES[S.mode].label.toLowerCase())} · seed ${S.seed}</span>
+    </div><div class="grid"></div></div>`;
+  E.out.appendChild(run);
+  const grid = run.querySelector('.grid');
+
+  for (let ai = 0; ai < aspects.length; ai++) {
+    for (let vi = 0; vi < S.per; vi++) {
+      /* Reject a build that is a visual near-duplicate of one already made at
+         this ratio and try again. Matters most with no text, where two crops of
+         the same photograph can otherwise land almost on top of each other. */
+      let rec = await buildOne(aspects[ai], ai, vi, 0, used);
+      for (let t = 1; t <= 4; t++) {
+        const clash = checkRunUniqueness([...S.recs, rec], 6)
+          .some(c => c.b === S.recs.length);
+        if (!clash) break;
+        rec = await buildOne(aspects[ai], ai, vi, (t * 0x51ED) >>> 0, used);
+      }
+      S.recs.push(rec);
+      grid.appendChild(cardFor(rec));
+      done++;
+      E.progfill.style.width = `${(done / total) * 100}%`;
+      if (done % 2 === 0) await frame();
+    }
   }
+  E.prog.hidden = true;
+  showVerdict();
+  E.go.disabled = false; E.dlall.disabled = false;
+}
+
+E.dlall.addEventListener('click', async () => {
+  if (!S.recs.length) return;
+  E.dlall.disabled = true;
+  const files = [];
+  for (const r of S.recs) files.push({ name: fileName(r), data: new Uint8Array(await r.out.blob.arrayBuffer()) });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(makeZip(files));
-  a.download = `${state.scan.host.replace(/\./g, '-')}-display-ads.zip`;
+  a.download = `${S.scan.host.replace(/\./g, '-')}-ads.zip`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-  say(`${files.length} images downloaded.`);
-  els.dlall.disabled = false;
+  E.dlall.disabled = false;
 });
 
-/* --------------------------------------------------------------- go ---- */
-els.form.addEventListener('submit', doScan);
-els.go.addEventListener('click', generate);
-document.querySelectorAll('[data-preset]').forEach(b =>
-  b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+/* --------------------------------------------------------------- rules -- */
+E.rulebody.innerHTML =
+  `<h4>${esc(CTA_POLICY.ruling)}</h4><ul>` +
+  CTA_POLICY.why.map(w => `<li><q>${esc(w)}</q></li>`).join('') +
+  `<li>${esc(CTA_POLICY.instead)}</li></ul>` +
+  `<h4>Not built</h4><ul>` +
+  UNKNOWNS.map(u => `<li>${esc(u)}</li>`).join('') + `</ul>` +
+  `<h4>File</h4><ul><li>${esc(FILE_RULES.note)}</li></ul>`;
 
-restore();
-buildPicker();
-buildStepper();
-tally();
-els.out.innerHTML = '<div class="wrap"><p class="empty">Read a site to begin.</p></div>';
+E.form.addEventListener('submit', doScan);
+E.go.addEventListener('click', generate);
+restore(); buildRatios(); buildModes(); buildSteps(); tally();
+E.out.innerHTML = '<div class="wrap"><p class="empty">Read a site to begin.</p></div>';
