@@ -1,77 +1,86 @@
-# ad-generator — one-click Google Display ad packs, in the browser
+# ad-generator — display ads read off any website
 
-**Status: BUILT + LIVE 2026-08-06.** Nothing uploaded to any ad account, $0 spent.
+**Status: REWRITTEN 2026-08-06.** Nothing uploaded to any ad account, $0 spent.
 
-**LIVE:** https://oliveroliver10816.github.io/ad-generator/ — verified end to end on the
-live URL (68 files, 0 fit misses, valid ZIP, 0 console errors).
-**Mirror:** https://ad-generator.fleet-fefsba.workers.dev (Cloudflare, same files).
-⚠ New GitHub Pages sites took ~40 min to build on 2026-08-06 (a platform-side queue —
-three new sites across two accounts all sat `building` while existing sites served 200).
-Don't delete/recreate Pages when that happens; it just queues. See
-[[github-pages-underscore-dir-and-stuck-deploy]].
-**Repo:** oliveroliver10816/ad-generator (public) · local `/root/workspace/ad-generator/`
+**LIVE:** https://ad-generator.fleet-fefsba.workers.dev — verified end to end on the
+live URL against ribboncera, gov.uk and blog.cloudflare.com.
+**GitHub Pages:** https://oliveroliver10816.github.io/ad-generator/ (same code; new Pages
+builds were queueing ~40 min on 2026-08-06 — see
+[[github-pages-underscore-dir-and-stuck-deploy]]).
+**Repos:** oliveroliver10816/ad-generator + opheliaclarke/ad-generator · local
+`/root/workspace/ad-generator/`
 
-## What Bob asked for
+## ⚠ The rewrite, and why
 
-Automation of the one-off `ribboncera-gdn` pack. His words: *"I just want it to be on
-github · the process must be simple · It already has reference images, color theme and
-all prompting json prebuilt · Everytime I generate something, it must be unique and
-100% random in its own way, but the theme, colors, graphics must stay as given · I will
-give: website, reference text."*
+The first build shipped a **prebuilt kit** (`kits/ribboncera/brand.json` + `prompts.json`
++ six copied photos). It only ever worked for one site. Bob's verdict was blunt and
+correct: *"it looks like its the worst ad generator there is in the world · it takes any
+images not related to the website · it has text predecided · THE GENERATOR MUST BE FIRST
+CHECKING THE WEBSITE PROPERLY, SCAN IT, AND FIND OUT WHAT IT IS ABOUT."*
 
-⚠ **I over-engineered the first answer** — pitched live brand-extraction from any URL,
-three hosting architectures and a two-part clarifying question. He rejected it flat
-(*"I don't know what you're talking about"*). **The right shape was much smaller than
-what I proposed.** See memory [[keep-the-proposal-as-small-as-the-ask]].
+⚠ **I had proposed exactly this scanning behaviour first, then abandoned it** when he
+rejected the over-technical pitch, and built the prebuilt-kit version instead. The lesson
+is not "he changed his mind" — a generator that cannot read its input is not a generator.
+See [[a-generator-must-read-its-input]] and [[keep-the-proposal-as-small-as-the-ask]].
 
-## What it is
+**`kits/` is deleted.** Nothing is authored in advance.
 
-A static page. Type website + optional reference text → **68 files** (3 concepts × 22
-GDN sizes + 2 logo assets), each with its own download button, plus a Download-all ZIP.
+## How it works now
 
-**Everything runs in the browser — no server, no build step, no libraries.** Ads are
-drawn on `<canvas>` and exported with `toBlob`. The ZIP is a hand-written store-only
-writer (~40 lines; PNG/JPEG are already compressed so deflate buys nothing).
+1. **`worker/src/worker.js`** — Cloudflare Worker with a `/fetch?url=` endpoint. A
+   browser cannot read another site (same-origin), so fetching happens server-side.
+   SSRF-guarded (private ranges, non-http schemes, size and time caps). It also serves
+   the app, so one URL is self-sufficient.
+2. **`scan.js`** — reads the page and pulls out brand name, description, headlines
+   (h1/h2/h3/`<summary>`), supporting sentences, real button and link labels, nav items
+   for kickers, photographs, the logo, and the site's typefaces.
+3. **`app.js`** — red/black themes, duotone, 8 layout archetypes, seeded planner, ZIP.
+4. **`ui.js` / `index.html` / `style.css`** — read the site → review what was found →
+   pick sizes and versions → generate.
 
-- `kits/ribboncera/brand.json` — locked: 3 themes × 3 gradient fields, logo SVG, photos
-- `kits/ribboncera/prompts.json` — 5 angles × pools of kicker/head/short/micro/sub/cta
-- `app.js` — 8 layout archetypes, seeded planner (mulberry32), canvas renderer, ZIP
-- `ui.js` — kit loading, form, download links
+**Red and black, as briefed.** Two reds by necessity: `#ef3a41` clears AA on black at
+body size (5.06:1) so it can carry text; `#d01820` is dark enough that white clears AA on
+it (5.48:1) so it can carry a fill. One red cannot do both jobs. Values measured off
+Bob's own reference creatives.
 
-**Randomness model:** one item drawn from each copy pool, plus randomised theme
-assignment, photo pick (tag-filtered), gradient variant, mirror, band ratio and focal
-jitter. **Brand is never randomised.** Reference text is split into short/mid/long lines
-and injected into the pools at 2× weight, so Bob's own words actually appear.
+**Size selection**: true-scale tiles (the tile *is* the slot shape), three presets, and
+1–6 versions per size. 5 sizes × 2 = 10 images, not 68.
 
 ## Traps hit and fixed (do not regress)
 
-- ⚠ **`→` (U+2192) is NOT in the Quicksand or PT Serif webfont subsets.** Proved by
-  measuring it against a deliberately-missing font — identical width, i.e. it was coming
-  from the OS fallback, so it would render differently on every machine or as tofu.
-  **Arrows are now drawn as vector paths.** Google's `latin` subset covers U+2000-206F
-  but the arrows block starts at U+2190 — only U+2191/2193 are included, not U+2192.
-- ⚠ **The mirrored leaderboard drew the CTA pill on top of the headline.** Mirroring is
-  random per run, so this only appeared on some seeds. Fix: the CTA is always
-  right-aligned, tucking inside the photo when mirrored. **`test/mirror.py` now forces
-  both branches of every archetype** — a random layout knob needs a test that pins it.
-- ⚠ **Canvas clips silently.** `fitStack` shrinks until the text fits height *and*
-  width, records any miss to `window.__fitMisses`, and the test fails on a non-empty
-  list. Long unbroken words are char-broken (tested with a 51-char word).
-- Fonts must be `document.fonts.load`ed before any `measureText`, or every layout is
-  computed against the fallback metrics and silently wrong.
+- ⚠ **The font probe was silently broken and looked like it worked.** It `fetch()`ed the
+  Google Fonts CSS, which is **CORS-blocked**, so it always failed — and Ribboncera still
+  reported "PT Serif · Quicksand" only because those are the self-hosted fallbacks. Fix:
+  inject a `<link>`, then **measure a probe string against a deliberately missing
+  family**. `document.fonts.check()` is useless here — it answers "can this render",
+  which is true for any name because fallback covers it.
+- ⚠ **`→` (U+2192) is not in Google's `latin` subset** (covers U+2000-206F plus
+  U+2191/2193, not U+2192). Arrows are drawn as vector paths.
+- ⚠ **A site's logo was being used as a photograph** (gov.uk had no other image). The
+  logo is now found *before* the photo sweep and excluded from it, and `og:image` is a
+  last resort because it is usually a branded share card.
+- ⚠ **Titles are sentences, not brand names** — "Welcome to GOV.UK". Prefixes are
+  stripped and anything still prose-like falls back to the domain.
+- ⚠ **Cross-origin images taint a canvas and `toBlob()` then throws**, breaking every
+  download silently. Images are proxied and converted to `blob:` URLs.
+- ⚠ **The url ran under the CTA** on long hosts. It now shrinks to a measured budget and
+  omits itself rather than collide.
+- ⚠ Mirrored leaderboard drew the CTA over the headline (only on some seeds).
+- ⚠ Canvas clips silently — `fitStack` records misses to `window.__fitMisses`; the test
+  fails on any.
 
-## QA that ran
+## QA
 
-`test/run.py` — 68 canvases, exact dimensions, 0 fit misses, 68 working download links,
-valid ZIP, 0 console errors. `test/mirror.py` — 8 archetypes × both mirror states.
-Contrast: **12/12 WCAG AA** across all 3 themes against their worst gradient stop.
+`test/run.py` (set `APP_URL` to test a deployed build) drives a real browser per site:
+scan, size selection, generate, exact dimensions, fit misses, download links, reroll
+actually changing the image, and the ZIP. **All checks pass on ribboncera, gov.uk and
+blog.cloudflare.com, 0 console errors.**
 
-## Open / next
+## Open
 
-- Only one kit exists (ribboncera). Adding a brand = copy the kit folder, swap the two
-  JSONs and `img/`, repoint `KIT` in `ui.js`.
-- ⚠ A GitHub-hosted page **cannot read another website live** (CORS). The typed URL is
-  printed on the ads and selects the kit; it is not scraped. Told Bob plainly.
-- Sizes are GDN only. Meta/social sizes would be a few rows in `SIZES`.
-
-Related: [[ribboncera-gdn-project]] (the hand-built pack this automates).
+- Themes are red/black only, by instruction. Deriving an accent from the scanned site is
+  a small addition — `scan.colours` is already collected and unused.
+- Sites that render content with JavaScript return little; the scanner says so rather
+  than inventing copy.
+- ⚠ **ribboncera.com does not resolve.** The live site is only on the Spaces URL, but its
+  canonical and og:url point at ribboncera.com. Flagged to Bob.
