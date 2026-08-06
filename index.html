@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Ad Pack Generator — Google Display sizes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='17' r='11' fill='%23f6dfd3'/%3E%3Cpath d='M15 4c2.6 3 4 5 4 7.2A4 4 0 0 1 15 15a4 4 0 0 1-4-3.8C11 9 12.4 7 15 4z' fill='%23e9a03b'/%3E%3Crect x='13.8' y='14' width='2.4' height='8' rx='1.2' fill='%235b3a4a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kick">Google Display Network</p>
+    <h1>Ad Pack Generator</h1>
+    <p class="lede">Type the website and, if you want, some reference text. Every run
+      draws a brand-new set in all 22 Google Display sizes — new wording, new crops,
+      new arrangement. The colours, fonts, logo and photos never change.</p>
+
+    <form id="form">
+      <label for="site">Website</label>
+      <input id="site" type="text" value="https://ribboncera.com/" spellcheck="false" autocomplete="off">
+
+      <label for="ref">Reference text <span class="opt">optional — your own words get used in the ads</span></label>
+      <textarea id="ref" rows="3" spellcheck="false" placeholder="e.g.&#10;Candle making, unhurried.&#10;Wax families, wick sizing and pour-day notes from a kitchen table."></textarea>
+
+      <div class="row">
+        <button id="go" type="submit" class="btn">Generate</button>
+        <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
+        <span id="status" class="status">Loading brand kit…</span>
+      </div>
+    </form>
+  </div>
+</header>
+
+<main id="out" class="wrap"></main>
+
+<footer class="wrap">
+  <p>Sizes: 300&times;50 · 320&times;50 · 320&times;100 · 468&times;60 · 728&times;90 · 970&times;90 ·
+     980&times;120 · 930&times;180 · 970&times;250 · 200&times;200 · 250&times;250 · 300&times;250 ·
+     336&times;280 · 580&times;400 · 240&times;400 · 250&times;360 · 300&times;600 · 300&times;1050 ·
+     120&times;600 · 160&times;600 · 1200&times;628 · 1200&times;1200, plus the 1:1 and 4:1 logo assets.
+     Every file is an exact slot size and under Google's 150&nbsp;KB limit.</p>
+</footer>
+
+<script src="app.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
