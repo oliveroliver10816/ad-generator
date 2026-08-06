@@ -9,7 +9,9 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # Pages deploys queue server-side; cancelling in-flight ones
+  # kills a deploy that is merely waiting its turn.
+  cancel-in-progress: false
 jobs:
   deploy:
     environment:
