@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Drive the generator against real websites and verify what comes out."""
-import base64, http.server, io, pathlib, socketserver, sys, threading
+import base64, http.server, io, os, pathlib, socketserver, sys, threading
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
@@ -8,6 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 QA = ROOT / "test" / "out"; QA.mkdir(parents=True, exist_ok=True)
 PORT = 8941
 
+APP = os.environ.get("APP_URL", f"http://localhost:{PORT}/")
 TARGETS = sys.argv[1:] or ["https://ribboncera.sfo3.digitaloceanspaces.com/index.html"]
 
 
@@ -31,7 +32,7 @@ with sync_playwright() as pw:
         pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}")
               if m.type == "error" and "Failed to load resource" not in m.text else None)
         pg.on("pageerror", lambda e: errs.append(f"pageerror: {e}"))
-        pg.goto(f"http://localhost:{PORT}/", wait_until="networkidle")
+        pg.goto(APP, wait_until="networkidle")
 
         print(f"\n=== {target}")
         pg.fill("#site", target)
