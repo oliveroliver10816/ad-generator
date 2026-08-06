@@ -8,7 +8,9 @@ Every run is a different pack: new wording, new crops, new arrangement, a differ
 photo per angle. The **brand never changes** — colours, fonts, logo and photography
 are fixed in the kit.
 
-**Live:** https://oliveroliver10816.github.io/ad-generator/
+**Live now:** https://ad-generator.fleet-fefsba.workers.dev
+**GitHub Pages:** https://oliveroliver10816.github.io/ad-generator/ (and opheliaclarke.github.io/ad-generator/) — both queued behind a GitHub Pages
+build backlog on 2026-08-06; they come up on their own, no action needed.
 
 ## How it works
 
