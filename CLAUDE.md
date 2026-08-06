@@ -2,11 +2,13 @@
 
 **Status: BUILT + LIVE 2026-08-06.** Nothing uploaded to any ad account, $0 spent.
 
-**LIVE:** https://ad-generator.fleet-fefsba.workers.dev (Cloudflare mirror, verified end to end)
-**GitHub Pages:** oliveroliver10816.github.io/ad-generator/ + opheliaclarke.github.io/ad-generator/
-— both stuck in GitHub's Pages build queue on 2026-08-06 (three new sites across two
-independent accounts all stuck `building` while existing sites on the same accounts
-served 200 — platform-side, not our content). They will come up on their own.
+**LIVE:** https://oliveroliver10816.github.io/ad-generator/ — verified end to end on the
+live URL (68 files, 0 fit misses, valid ZIP, 0 console errors).
+**Mirror:** https://ad-generator.fleet-fefsba.workers.dev (Cloudflare, same files).
+⚠ New GitHub Pages sites took ~40 min to build on 2026-08-06 (a platform-side queue —
+three new sites across two accounts all sat `building` while existing sites served 200).
+Don't delete/recreate Pages when that happens; it just queues. See
+[[github-pages-underscore-dir-and-stuck-deploy]].
 **Repo:** oliveroliver10816/ad-generator (public) · local `/root/workspace/ad-generator/`
 
 ## What Bob asked for
