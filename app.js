@@ -128,7 +128,11 @@ function makeJob(scan, pools, runSeed, aspect, aspectIdx, varIdx, salt, avoid) {
    nothing is drawn, so it can be run repeatedly until it fits. */
 function layoutText(ctx, job, mode, scale) {
   const { W, H } = job, MIN = Math.min(W, H);
-  const pad = Math.round(MIN * 0.072);
+  /* Padding is driven by the short side for looks, but it can never be less
+     than the 5% either side that Google may crop off a wide canvas — on a
+     1920 × 1080 that margin is 96px, well past a short-side-derived inset. */
+  const pad = Math.max(Math.round(MIN * 0.072),
+                       Math.ceil(W * TEXT_LIMITS.safeMarginX) + Math.round(MIN * 0.022));
   const centre = job.layout === 'bottom-center';
   const colW = centre ? W - pad * 2
              : Math.min(W - pad * 2, W * (job.layout === 'edge-left' ? 0.60 : 0.84));

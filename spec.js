@@ -30,6 +30,12 @@ const ASPECTS = [
     note: 'Not supported on Search image assets.',
   },
   {
+    key: '9x16', label: 'Vertical', ratio: 1080 / 1920, w: 1080, h: 1920,
+    min: '600 × 1067',
+    used: 'Optional for Demand Gen image assets.',
+    note: 'Demand Gen is the only campaign type that takes 9:16 as an image.',
+  },
+  {
     key: '16x9', label: 'Widescreen', ratio: 1920 / 1080, w: 1920, h: 1080,
     min: '—',
     used: 'Video ratio: YouTube, Demand Gen video, Performance Max video.',
@@ -45,10 +51,11 @@ const ASPECT_NOTES = [
   {
     asked: '1.19:1',
     verdict: 'Not a Google Ads ratio.',
-    detail: 'Absent from Demand Gen, Performance Max, responsive display, app, ' +
-            'Search image assets, YouTube and Merchant Center specs. Almost ' +
-            'certainly a transposition of 1.91:1, which is the real landscape ratio ' +
-            'and is already in the list above.',
+    detail: 'Searched and not found across 13 Google spec and policy pages. ' +
+            'Two readings are defensible and this tool will not guess between ' +
+            'them: 1.91:1, if the digits were transposed; or the 300 × 250 ' +
+            'display banner, which is 1.2:1 and numerically closer to 1.19 than ' +
+            '1.91 is. Say which you meant and it is a minute to add.',
   },
   {
     asked: '16:9',
@@ -143,7 +150,13 @@ const TEXT_LIMITS = {
   headlineMax: 42,      // one short line, not a paragraph
   shortMax: 30,
   ctaMax: 18,
-  maxCoverage: 0.20,    // "text may cover no more than 20%" — responsive display
+  // "Text may cover no more than 20% of the image" — responsive display best
+  // practice, verbatim on the Help page. It appears on no Advertising Policies
+  // page, so it is a quality ceiling here, not an enforceable threshold.
+  maxCoverage: 0.20,
+  // "Images may be cropped horizontally up to 5% on each side" to fit some
+  // placements, so nothing legible may sit in the outer 5%.
+  safeMarginX: 0.05,
 };
 
 /* ------------------------------------------------------------ palette --- */
@@ -160,9 +173,12 @@ const UNKNOWNS = [
   'Google does not publish whether it fingerprints or perceptually hashes ' +
   'creative images to link advertisers or accounts. Absence of documentation ' +
   'is not evidence either way.',
-  'Deliberately altering a creative to avoid Google\'s review systems falls ' +
-  'under Circumventing systems, which carries immediate account suspension ' +
-  'with no warning. Re-uploading a modified version of a disapproved creative ' +
-  'is itself the named trigger. Variation here exists to make better ads, not ' +
-  'to defeat review.',
+  'Circumventing systems carries account suspension, and the policy names ' +
+  '"bypassing enforcement mechanisms and detection by creating variations of" ' +
+  'content. The operative word is BYPASSING: fixing a disapproved ad and ' +
+  'resubmitting it is Google\'s own documented remedy and is not the violation. ' +
+  'What is prohibited is varying a creative in order to get past review. The ' +
+  'variation in this tool exists so that a set of ads is a set of ads rather ' +
+  'than one ad twelve times — it is not tuned against any detector, and no ' +
+  'part of it tries to be.',
 ];

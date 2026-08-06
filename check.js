@@ -116,6 +116,16 @@ function checkImage(cv, job, report, bytes) {
   for (const c of report.contrasts || []) {
     if (c.ratio < 4.5) issues.push(`${c.what} sits at ${c.ratio.toFixed(1)}:1 on its background`);
   }
+  /* Google crops image assets horizontally by up to 5% a side to fit some
+     placements. Anything legible in that margin can be sliced off. */
+  const m = TEXT_LIMITS.safeMarginX * W;
+  for (const bx of report.boxes || []) {
+    if (bx.x < m - 0.5 || bx.x + bx.w > W - m + 0.5) {
+      issues.push('text reaches into the 5% edge that Google may crop');
+      break;
+    }
+  }
+
   /* Editorial > Image quality covers images that are essentially a solid
      block. A frame that is 97% black is not a photograph of anything. */
   const lit = litFraction(cv);

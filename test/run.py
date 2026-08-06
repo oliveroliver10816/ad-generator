@@ -81,7 +81,9 @@ with sync_playwright() as pw:
             w: c.querySelector('img').naturalWidth, h: c.querySelector('img').naturalHeight}))""")
         bad = [d for d in dims if d["spec"] != f'{d["w"]}x{d["h"]}']
         print(f"  images {n} · dim mismatches {len(bad)}")
-        if n != 12: fails.append(f"{target}: expected 12 images, got {n}")
+        expected = len(pg.evaluate("() => document.querySelectorAll('.rt input:checked').length")) \
+            if False else pg.evaluate("() => document.querySelectorAll('.rt input:checked').length") * 3
+        if n != expected: fails.append(f"{target}: expected {expected} images, got {n}")
         if bad: fails.append(f"{target}: dim mismatch {bad[:2]}")
 
         links = pg.evaluate("""() => {
