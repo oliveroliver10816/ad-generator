@@ -13,9 +13,13 @@
    appears only where the picture is genuinely lit, and the hottest highlights
    go to white. A flat mid-red ramp turns everything maroon — that was the
    first attempt and it read as a colour cast rather than as lighting. */
+/* Dark red and black, and it has to STAY dark. Pale stops near the top were
+   what read as washed out — a large lit area landed on pink. The hottest tone
+   is now a saturated red, and only the last few percent of the range goes
+   bright at all. */
 const NEON_RAMP = [
-  ['#000000', 0.00], ['#020101', 0.50], ['#5c070d', 0.74],
-  ['#e5252c', 0.90], ['#ff7a6e', 0.96], ['#ffb3a8', 1.00],
+  ['#000000', 0.00], ['#050001', 0.44], ['#3d0207', 0.66],
+  ['#8c0a11', 0.80], ['#c8121c', 0.91], ['#e81c24', 0.975], ['#ff6a52', 1.00],
 ];
 /* Shadow crush and midtone gamma matter as much as the ramp. Normalising from
    the 2nd percentile with no gamma left every photograph a flat red wash —
@@ -91,7 +95,7 @@ function treatOnce(img, w, h, crushLo, gamma) {
  *  dim one into an almost entirely black rectangle — which then fails the
  *  image-quality check no matter what the composition does. So the curve is
  *  eased until enough of the frame carries light. */
-function treatPhoto(img, maxSide = 1500) {
+function treatPhoto(img, maxSide = 2600) {
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
   const sc = Math.min(1, maxSide / Math.max(iw, ih));
   const w = Math.max(1, Math.round(iw * sc)), h = Math.max(1, Math.round(ih * sc));
@@ -110,13 +114,13 @@ function treatPhoto(img, maxSide = 1500) {
 /* -------------------------------------------------------------- grain --- */
 /* A seeded noise tile per image. Cheap, and it means two images that happened
    to land on the same layout still differ pixel for pixel. */
-function grainTile(rand, size = 180) {
+function grainTile(rand, size = 128) {
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;
   const ctx = cv.getContext('2d');
   const d = ctx.createImageData(size, size), px = d.data;
   for (let i = 0; i < px.length; i += 4) {
-    const v = 118 + ((rand() - 0.5) * 84) | 0;
+    const v = 124 + ((rand() - 0.5) * 52) | 0;
     px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255;
   }
   ctx.putImageData(d, 0, 0);
@@ -130,13 +134,60 @@ function grainTile(rand, size = 180) {
  *  Not the same thing as CSS object-position: there, the value is an alignment
  *  between the overflow edges, so passing a source coordinate straight in aims
  *  at the wrong place entirely and the crop never finds the subject. */
+/** Unsharp mask. Canvas resampling is soft, and anything that has been scaled
+ *  up needs the edges putting back or it reads as blurred. Separable box blur
+ *  approximates the gaussian closely enough at these radii and is fast. */
+function unsharp(ctx, W, H, amount, radius) {
+  if (amount <= 0) return;
+  let d;
+  try { d = ctx.getImageData(0, 0, W, H); } catch (e) { return; }
+  const src = d.data, n = W * H;
+  const blur = new Uint8ClampedArray(src.length);
+  const tmp = new Float32Array(n * 3);
+  const r = Math.max(1, Math.round(radius));
+
+  for (let y = 0; y < H; y++) {              // horizontal
+    for (let c = 0; c < 3; c++) {
+      let acc = 0;
+      for (let x = -r; x <= r; x++) acc += src[((y * W + Math.min(W - 1, Math.max(0, x))) << 2) + c];
+      const div = r * 2 + 1;
+      for (let x = 0; x < W; x++) {
+        tmp[(y * W + x) * 3 + c] = acc / div;
+        const out = Math.max(0, x - r), inn = Math.min(W - 1, x + r + 1);
+        acc += src[((y * W + inn) << 2) + c] - src[((y * W + out) << 2) + c];
+      }
+    }
+  }
+  for (let x = 0; x < W; x++) {              // vertical
+    for (let c = 0; c < 3; c++) {
+      let acc = 0;
+      for (let y = -r; y <= r; y++) acc += tmp[(Math.min(H - 1, Math.max(0, y)) * W + x) * 3 + c];
+      const div = r * 2 + 1;
+      for (let y = 0; y < H; y++) {
+        blur[((y * W + x) << 2) + c] = acc / div;
+        const out = Math.max(0, y - r), inn = Math.min(H - 1, y + r + 1);
+        acc += tmp[(inn * W + x) * 3 + c] - tmp[(out * W + x) * 3 + c];
+      }
+    }
+  }
+  for (let i = 0; i < src.length; i += 4) {
+    src[i]     = src[i]     + (src[i]     - blur[i]) * amount;
+    src[i + 1] = src[i + 1] + (src[i + 1] - blur[i + 1]) * amount;
+    src[i + 2] = src[i + 2] + (src[i + 2] - blur[i + 2]) * amount;
+  }
+  ctx.putImageData(d, 0, 0);
+}
+
 function coverDraw(ctx, src, W, H, fx, fy, zoom) {
   const iw = src.width, ih = src.height;
   const scale = Math.max(W / iw, H / ih) * (zoom || 1);
   const dw = iw * scale, dh = ih * scale;
   const ox = Math.min(0, Math.max(W - dw, W / 2 - fx * dw));
   const oy = Math.min(0, Math.max(H - dh, H / 2 - fy * dh));
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(src, ox, oy, dw, dh);
+  return scale;                              // caller needs the upscale factor
 }
 
 /** Sink the picture into black so type has somewhere to sit. This is the

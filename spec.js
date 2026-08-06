@@ -70,7 +70,7 @@ const ASPECT_NOTES = [
 const FILE_RULES = {
   formats: ['png', 'jpg'],
   maxBytes: 5 * 1024 * 1024,        // 5120 KB for image assets
-  targetBytes: 900 * 1024,          // stay well clear; quality is free below this
+  targetBytes: 3200 * 1024,         // well under 5 MB, and quality is the point
   note: 'Image assets are capped at 5 MB. The 150 KB limit belongs to uploaded ' +
         'display banners and to the Demand Gen logo, not to these ratios.',
 };

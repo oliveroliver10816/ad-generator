@@ -4,87 +4,86 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Ad Press</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23e5252c'/%3E%3C/svg%3E">
+<title>Ad Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23106f62'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23f5c37a'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="deck">
+<header class="top">
   <div class="wrap">
-    <div class="bar">
-      <span class="dot" aria-hidden="true"></span>
-      <span class="nm">Ad Press</span>
-      <span class="sub">reads the site, then draws</span>
-    </div>
-
-    <form id="form" novalidate>
-      <div class="row1">
-        <div class="f">
-          <label for="site">Website</label>
-          <input id="site" type="url" inputmode="url" spellcheck="false" autocomplete="off"
-                 placeholder="https://example.com">
-        </div>
-        <button id="scan" type="submit" class="btn primary">Read it</button>
-      </div>
-      <div class="f">
-        <label for="ref">Your own line <span class="o">optional</span></label>
-        <input id="ref" type="text" spellcheck="false"
-               placeholder="One short line to use instead of the site's own">
-      </div>
-      <p class="hint" id="scanhint">Any public URL.</p>
-    </form>
+    <div class="logo"><span class="dot"></span> Ad&nbsp;Studio</div>
+    <span class="whoami" id="whoami"></span>
   </div>
 </header>
 
-<section id="found" class="panel" hidden>
-  <div class="wrap">
-    <div class="fgrid" id="fgrid"></div>
-  </div>
-</section>
-
-<section id="setup" class="panel setup" hidden>
-  <div class="wrap">
-    <div class="cols">
-      <div>
-        <h2 class="lab">Ratios</h2>
-        <div id="ratios" class="ratios"></div>
-        <p class="foot" id="rationote"></p>
-      </div>
-      <div>
-        <h2 class="lab">Text on the image</h2>
-        <div id="textmodes" class="modes"></div>
-        <p class="foot" id="modenote"></p>
-
-        <h2 class="lab sp">Versions each</h2>
-        <div id="pervals" class="steps" role="group" aria-label="Versions per ratio"></div>
-      </div>
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <h1 class="rise" style="--d:0ms">Give it a website.<br>Get a set of ads.</h1>
+      <p class="sub rise" style="--d:70ms">It reads the site, works out what the business is,
+        writes the concept, and lays the ads out for you. Everything on one screen — set it
+        all here and press go once.</p>
     </div>
+  </section>
 
-    <div class="act">
-      <output id="tally">nothing selected</output>
-      <div class="go">
-        <button id="go" type="button" class="btn primary" disabled>Generate</button>
-        <button id="dlall" type="button" class="btn ghost" disabled>Download all</button>
-      </div>
+  <section class="panel">
+    <div class="wrap">
+      <form id="form" novalidate>
+
+        <div class="q rise" style="--d:140ms">
+          <div class="qh"><span class="n">1</span><label for="site">Which website?</label></div>
+          <input id="site" type="url" inputmode="url" spellcheck="false" autocomplete="off"
+                 placeholder="yourbusiness.com">
+        </div>
+
+        <div class="q rise" style="--d:200ms">
+          <div class="qh"><span class="n">2</span><label for="ref">Anything you want it to say?</label>
+            <span class="opt">optional</span></div>
+          <input id="ref" type="text" spellcheck="false"
+                 placeholder="One short line — we'll use yours ahead of the site's own words">
+        </div>
+
+        <div class="q rise" style="--d:260ms">
+          <div class="qh"><span class="n">3</span><label>Which sizes?</label>
+            <button type="button" class="mini" id="allsizes">all</button></div>
+          <div id="ratios" class="ratios"></div>
+        </div>
+
+        <div class="q rise" style="--d:320ms">
+          <div class="qh"><span class="n">4</span><label>How many of each?</label></div>
+          <div id="counts" class="counts" role="group" aria-label="How many of each size"></div>
+        </div>
+
+        <div class="q rise" style="--d:380ms">
+          <div class="qh"><span class="n">5</span><label>Words on the picture?</label></div>
+          <div id="modes" class="modes"></div>
+        </div>
+
+        <div class="go rise" style="--d:440ms">
+          <button id="run" type="submit" class="btn">Make my ads</button>
+          <span class="tally" id="tally"></span>
+        </div>
+      </form>
     </div>
-    <div class="prog" id="prog" hidden><i id="progfill"></i></div>
-  </div>
-</section>
+  </section>
 
-<section id="verdict" class="panel verdict" hidden>
-  <div class="wrap"><div id="vgrid" class="vgrid"></div></div>
-</section>
+  <section id="steps" class="steps" hidden>
+    <div class="wrap"><ol id="steplist"></ol></div>
+  </section>
 
-<main id="out" class="proof"></main>
+  <section id="report" class="report" hidden>
+    <div class="wrap"><div id="reportgrid" class="rg"></div></div>
+  </section>
+
+  <section id="out" class="out"></section>
+</main>
 
 <footer>
   <div class="wrap">
-    <details id="rules">
-      <summary>What this follows, and what it refuses</summary>
-      <div id="rulebody"></div>
-    </details>
+    <button type="button" class="link" id="rulesbtn">What this follows, and what it won't do</button>
+    <div id="rules" class="rules" hidden></div>
   </div>
 </footer>
 

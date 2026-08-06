@@ -2,5 +2,8 @@
   "name": "ad-generator",
   "main": "src/worker.js",
   "compatibility_date": "2026-01-01",
-  "assets": { "directory": "./public", "binding": "ASSETS" }
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "kv_namespaces": [
+    { "binding": "ADGEN", "id": "5997cbe5367e4104b3fa9a308a48e221" }
+  ]
 }

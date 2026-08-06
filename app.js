@@ -107,17 +107,25 @@ function makeJob(scan, pools, runSeed, aspect, aspectIdx, varIdx, salt, avoid) {
     scrimKind: layout.startsWith('bottom') ? 'bottom'
              : layout === 'top-left' ? 'top'
              : layout === 'edge-left' ? 'left' : 'corner',
-    scrimStrength: 0.60 + r() * 0.26,
-    vignetteAmt: 0.30 + r() * 0.22,
+    scrimStrength: 0.52 + r() * 0.20,
+    vignetteAmt: 0.24 + r() * 0.18,
     // Crop around where the light is, with enough jitter that two versions of
     // the same ratio still frame the subject differently.
     fx: clamp01((photo && photo.treated ? photo.treated.focus.x : 0.5) + (r() - 0.5) * 0.34),
     fy: clamp01((photo && photo.treated ? photo.treated.focus.y : 0.5) + (r() - 0.5) * 0.30),
-    zoom: (photo && photo.treated
-             ? 1.0 + Math.max(0, 0.34 - photo.treated.litFraction) * 1.5
-             : 1.0) + r() * 0.16,
+    /* Zoom crops in, which multiplies any upscale. When the source is already
+       smaller than the canvas, spend that budget on resolution rather than on
+       a tighter crop. */
+    zoom: (() => {
+      const base = photo && photo.treated
+        ? 1.0 + Math.max(0, 0.30 - photo.treated.litFraction) * 1.2 : 1.0;
+      const head = photo && photo.treated
+        ? Math.min(photo.treated.width / aspect.w, photo.treated.height / aspect.h) : 1;
+      const room = head >= 1.25 ? 0.16 : head >= 1 ? 0.08 : 0.02;
+      return base + r() * room;
+    })(),
     grainSeed: (r() * 1e9) >>> 0,
-    grainAmount: 0.030 + r() * 0.026,
+    grainAmount: 0.012 + r() * 0.012,
     lightSeed: (r() * 1e9) >>> 0,
   };
 }
@@ -210,7 +218,7 @@ function renderAd(cv, job, textModeKey) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     if (job.photo && job.photo.treated) {
-      coverDraw(ctx, job.photo.treated, W, H, job.fx, job.fy, job.zoom * zoomMul);
+      report.drawScale = coverDraw(ctx, job.photo.treated, W, H, job.fx, job.fy, job.zoom * zoomMul);
     } else {
       const g = ctx.createLinearGradient(0, 0, W, H);
       g.addColorStop(0, '#170609'); g.addColorStop(1, '#000');
@@ -250,6 +258,8 @@ function renderAd(cv, job, textModeKey) {
 
   const wantsText = mode.brand || mode.headline;
   if (!wantsText) {
+    const up0 = report.drawScale || 1;
+    unsharp(ctx, W, H, up0 <= 1.0 ? 0.35 : Math.min(1.15, 0.35 + (up0 - 1) * 0.85), up0 > 1.8 ? 2 : 1);
     grainPass(ctx, job, W, H);
     report.litFinal = litFraction(cv);
     return report;
@@ -306,6 +316,14 @@ function renderAd(cv, job, textModeKey) {
   /* No button is drawn anywhere in this file; CTA_MODE exists so the checker
      can assert that rather than trusting the code simply never does it. */
   if (CTA_MODE === 'button') report.drewButton = true;
+
+  /* Sharpen before the grain, so the grain does not get sharpened into
+     crunch. Amount tracks the upscale: a native-resolution crop needs almost
+     nothing, a 2x blow-up needs real help. */
+  const up = report.drawScale || 1;
+  const amount = up <= 1.0 ? 0.35 : Math.min(1.15, 0.35 + (up - 1) * 0.85);
+  unsharp(ctx, W, H, amount, up > 1.8 ? 2 : 1);
+  report.sharpenAmount = amount;
 
   grainPass(ctx, job, W, H);
   report.litFinal = litFraction(cv);
@@ -364,14 +382,14 @@ async function canvasToBlob(cv, name) {
   // Image assets are allowed 5 MB, so quality is nearly free — but a 1200px
   // photographic PNG is several MB for no visible gain, so JPEG is the default
   // and PNG is only kept when it happens to be smaller.
-  const png = await new Promise(res => cv.toBlob(res, 'image/png'));
-  let best = { blob: png, ext: 'png' };
-  for (const q of [0.94, 0.9, 0.86, 0.82, 0.76, 0.7]) {
+  /* 5 MB of headroom exists — spend it. The previous pass optimised for the
+     smallest file and shipped visibly soft JPEG for no reason. */
+  for (const q of [0.97, 0.94, 0.9, 0.85, 0.8]) {
     const jpg = await new Promise(res => cv.toBlob(res, 'image/jpeg', q));
-    if (jpg.size < best.blob.size) best = { blob: jpg, ext: 'jpg' };
-    if (best.blob.size <= FILE_RULES.targetBytes) break;
+    if (jpg.size <= FILE_RULES.targetBytes || q === 0.8) {
+      return { blob: jpg, name: `${name}.jpg`, bytes: jpg.size, ext: 'jpg', quality: q };
+    }
   }
-  return { blob: best.blob, name: `${name}.${best.ext}`, bytes: best.blob.size, ext: best.ext };
 }
 
 let UI_FONT = 'Archivo', DISPLAY_FONT = 'Archivo';

@@ -7,10 +7,12 @@
  * toBlob() throws, so the downloads would break.
  */
 
+import { handleCanva } from './canva.js';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, x-app-key',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -90,6 +92,9 @@ export default {
       if (!target) return new Response(JSON.stringify({ error: 'missing url' }), {
         status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
       return proxy(target);
+    }
+    if (url.pathname.startsWith('/canva/')) {
+      return handleCanva(request, env, url.pathname, CORS);
     }
     if (url.pathname === '/health') {
       return new Response(JSON.stringify({ ok: true }), {
