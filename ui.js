@@ -6,6 +6,7 @@ const E = {
   counts: $('counts'), modes: $('modes'), run: $('run'), tally: $('tally'),
   allsizes: $('allsizes'), steps: $('steps'), steplist: $('steplist'),
   report: $('report'), reportgrid: $('reportgrid'), out: $('out'),
+  bar: $('bar'), fill: $('fill'), pct: $('pct'), eta: $('eta'),
   whoami: $('whoami'), rulesbtn: $('rulesbtn'), rules: $('rules'),
 };
 
@@ -129,6 +130,53 @@ function step(k, state, note) {
   if (note != null) li.querySelector('.note').textContent = note;
 }
 
+/* -------------------------------------------------------- progress ---- */
+/* Weighted, because reading the site is a fixed unknown cost and drawing is
+   per-image. The estimate comes from images actually finished in this run —
+   a fixed guess would be wrong on the first slow website. */
+const P = { started: 0, drawn: 0, total: 0, drawStart: 0, readDone: 0 };
+const READ_SHARE = 0.22;                    // reading is roughly a fifth of the wait
+
+function progressReset(total) {
+  Object.assign(P, { started: performance.now(), drawn: 0, total, drawStart: 0, readDone: 0 });
+  E.bar.hidden = false;
+  E.fill.classList.add('idle');
+  E.fill.style.width = '4%';
+  E.pct.textContent = '0%';
+  E.eta.textContent = 'reading the site…';
+}
+function human(ms) {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `about ${s}s left`;
+  const m = Math.floor(s / 60);
+  return `about ${m}m ${s % 60}s left`;
+}
+function progressRead() {
+  P.readDone = performance.now();
+  P.drawStart = P.readDone;
+  E.fill.classList.remove('idle');
+  setProgress(READ_SHARE, null);
+}
+function progressDrew(n) {
+  P.drawn = n;
+  const frac = READ_SHARE + (1 - READ_SHARE) * (n / P.total);
+  const per = (performance.now() - P.drawStart) / Math.max(1, n);
+  setProgress(frac, n < P.total ? per * (P.total - n) : 0);
+}
+function setProgress(frac, msLeft) {
+  const pc = Math.max(0, Math.min(100, Math.round(frac * 100)));
+  E.fill.style.width = pc + '%';
+  E.pct.textContent = pc + '%';
+  if (msLeft === 0) E.eta.textContent = 'finishing…';
+  else if (msLeft != null) E.eta.textContent = human(msLeft);
+}
+function progressDone() {
+  E.fill.classList.remove('idle');
+  setProgress(1, 0);
+  E.pct.textContent = '100%';
+  E.eta.textContent = `done in ${Math.round((performance.now() - P.started) / 1000)}s`;
+}
+
 /* ------------------------------------------------------------- run ----- */
 const frame = () => new Promise(r => requestAnimationFrame(() => r()));
 const chosenAspects = () => ASPECTS.filter(a => S.chosen.has(a.key));
@@ -231,6 +279,7 @@ async function run(ev) {
   E.run.disabled = true;
   E.out.innerHTML = ''; E.report.hidden = true; S.recs = [];
   showSteps();
+  progressReset(aspects.length * S.per);
   E.steps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   step('read', 'now');
@@ -243,8 +292,10 @@ async function run(ev) {
     s.photos.forEach(p => { p.treated = treatPhoto(p.img); });
     S.scan = s;
     step('read', 'done', `${s.host} · ${s.photos.length} photos · ${s.counts.headlines} lines`);
+    progressRead();
   } catch (e) {
     step('read', 'fail', String(e.message || e));
+    E.bar.hidden = true;
     E.run.disabled = false;
     return;
   }
@@ -280,6 +331,7 @@ async function run(ev) {
       grid.appendChild(cardFor(rec, done));
       done++;
       step('draw', 'now', `${done} of ${total}`);
+      progressDrew(done);
       await frame();
     }
   }
@@ -290,6 +342,7 @@ async function run(ev) {
   showReport();
   const bad = S.recs.reduce((n, r) => n + r.check.issues.length, 0);
   step('check', bad ? 'fail' : 'done', bad ? `${bad} to look at` : 'all clear');
+  progressDone();
 
   const dl = document.createElement('div');
   dl.className = 'go';

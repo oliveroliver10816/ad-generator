@@ -70,7 +70,16 @@
   </section>
 
   <section id="steps" class="steps" hidden>
-    <div class="wrap"><ol id="steplist"></ol></div>
+    <div class="wrap">
+      <div class="bar" id="bar" hidden>
+        <div class="barrow">
+          <span class="pct" id="pct">0%</span>
+          <span class="eta" id="eta">estimating…</span>
+        </div>
+        <div class="track"><i id="fill"></i></div>
+      </div>
+      <ol id="steplist"></ol>
+    </div>
   </section>
 
   <section id="report" class="report" hidden>

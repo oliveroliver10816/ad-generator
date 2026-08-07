@@ -148,13 +148,18 @@ function litFraction(cv) {
   return n / 4096;
 }
 
-/** Across a whole run: nothing may be a visual near-duplicate of anything else. */
+/** Across a whole run: nothing may be a visual near-duplicate of anything else.
+ *
+ *  ⚠ This used to skip any pair of DIFFERENT canvas sizes, on the reasoning
+ *  that a 1:1 and a 16:9 are different assets. That was wrong, and it is
+ *  exactly how a set ends up being one advert at five sizes: the check was
+ *  built to permit it. The hash is computed on a square 9x8 grid, so it is
+ *  already aspect-independent — every pair is compared. */
 function checkRunUniqueness(records, minDistance) {
   const min = minDistance == null ? 6 : minDistance;
   const clashes = [];
   for (let i = 0; i < records.length; i++) {
     for (let j = i + 1; j < records.length; j++) {
-      if (records[i].job.W !== records[j].job.W || records[i].job.H !== records[j].job.H) continue;
       const d = hamming(records[i].check.hash, records[j].check.hash);
       if (d < min) clashes.push({ a: i, b: j, distance: d });
     }
