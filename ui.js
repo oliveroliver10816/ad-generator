@@ -186,11 +186,11 @@ function fileName(rec) {
   return `${host}-${rec.job.W}x${rec.job.H}-v${rec.vi + 1}.${rec.out.ext}`;
 }
 
-async function buildOne(aspect, ai, vi, salt, avoid) {
+async function buildOne(aspect, ai, vi, salt, avoid, slot, famShift) {
   let best = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     const useSalt = (salt + attempt * 0x9E37) >>> 0;
-    const job = makeJob(S.scan, S.pools, S.seed, aspect, ai, vi, useSalt, avoid);
+    const job = makeJob(S.scan, S.pools, S.seed, aspect, ai, vi, useSalt, avoid, slot, famShift);
     const cv = document.createElement('canvas');
     const report = renderAd(cv, job, S.mode);
     const out = await canvasToBlob(cv, `${job.W}x${job.H}`);
@@ -321,11 +321,13 @@ async function run(ev) {
 
   for (let ai = 0; ai < aspects.length; ai++) {
     for (let vi = 0; vi < S.per; vi++) {
-      let rec = await buildOne(aspects[ai], ai, vi, 0, used);
-      for (let t = 1; t <= 4; t++) {
+      /* Repair: a clash moves the slot to a different composition family, not
+         just a new crop of the same one. Five shifts covers every family. */
+      let rec = await buildOne(aspects[ai], ai, vi, 0, used, done, 0);
+      for (let t = 1; t <= 5; t++) {
         const clash = checkRunUniqueness([...S.recs, rec], 6).some(c => c.b === S.recs.length);
         if (!clash) break;
-        rec = await buildOne(aspects[ai], ai, vi, (t * 0x51ED) >>> 0, used);
+        rec = await buildOne(aspects[ai], ai, vi, (t * 0x51ED) >>> 0, used, done, t);
       }
       S.recs.push(rec);
       grid.appendChild(cardFor(rec, done));

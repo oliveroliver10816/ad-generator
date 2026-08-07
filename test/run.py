@@ -66,6 +66,10 @@ with sync_playwright() as pw:
             print(f"  · {v['k']:16s} {v['v']}{'   FAIL' if v['bad'] else ''}")
             if v['bad']: fails.append(f"{target}: {v['k']} = {v['v']}")
 
+        iss = pg.evaluate("""() => [...document.querySelectorAll('.card .s')].map(s=>s.title)
+            .filter(t=>t && t!=='passes every check')""")
+        for t in iss[:8]: print("    issue:", t.replace(chr(10),' | ')[:120])
+
         n = pg.evaluate("document.querySelectorAll('.card img').length")
         expect = pg.evaluate("document.querySelectorAll('.rt input:checked').length") * 2
         print(f"  images {n} (expected {expect})")

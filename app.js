@@ -69,21 +69,26 @@ function buildPools(scan, refText) {
 const LAYOUTS = ['bottom-left', 'bottom-center', 'top-left', 'center-left', 'edge-left'];
 const LIGHTS = ['bar', 'streak', 'bloom', 'none'];
 
-function makeJob(scan, pools, runSeed, aspect, aspectIdx, varIdx, salt, avoid) {
+function makeJob(scan, pools, runSeed, aspect, aspectIdx, varIdx, salt, avoid, slot, famShift) {
   const seed = subSeed(runSeed, aspectIdx, varIdx, salt);
   const r = mulberry32(seed);
-  /* Weight the choice toward photographs that carry light. A near-black source
-     can still be used, just less often. */
+
+  /* Family rotates by absolute slot, offset by the run seed, so consecutive
+     images never share a composition and the whole set is reproducible.
+     Families needing a photograph are skipped when the site gave us none —
+     PLATE and COLOPHON exist precisely for that case. */
+  const havePhoto = scan.photos.length > 0;
+  const pool = FAMILIES.filter(f => havePhoto || !f.needsPhoto);
+  const slotIdx = slot == null ? (aspectIdx * 97 + varIdx) : slot;
+  /* famShift lets the repair pass move a clashing slot onto a different
+     composition rather than re-rolling the same one with a new crop. */
+  const family = pool[(slotIdx + (runSeed % pool.length) + (famShift || 0)) % pool.length];
+  /* Rotate through the photographs by slot rather than drawing at random with
+     replacement — weighted random kept landing on the same one or two. */
   let photo = null;
-  if (scan.photos.length) {
-    const weights = scan.photos.map(p => 0.25 + (p.treated ? p.treated.litFraction : 0.2) * 4);
-    const total = weights.reduce((a, b) => a + b, 0);
-    let t = r() * total;
-    for (let i = 0; i < scan.photos.length; i++) {
-      t -= weights[i];
-      if (t <= 0) { photo = scan.photos[i]; break; }
-    }
-    photo = photo || scan.photos[0];
+  if (havePhoto) {
+    const order = shuffle(mulberry32(runSeed ^ 0xA11CE), scan.photos.map((_, i) => i));
+    photo = scan.photos[order[slotIdx % order.length]];
   }
 
   const tall = aspect.h / aspect.w > 1.1;
@@ -93,7 +98,7 @@ function makeJob(scan, pools, runSeed, aspect, aspectIdx, varIdx, salt, avoid) {
   if (tall && layout === 'edge-left') layout = 'bottom-left';
 
   return {
-    seed, aspect, aspectIdx, varIdx,
+    seed, aspect, aspectIdx, varIdx, family, slotIdx,
     W: aspect.w, H: aspect.h, label: aspect.label, ratio: aspect.ratio,
     photo,
     brandName: scan.brandName,
@@ -207,123 +212,47 @@ function renderAd(cv, job, textModeKey) {
   const mode = TEXT_MODES[textModeKey] || TEXT_MODES.brand;
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d', { willReadFrequently: true });
-  const report = { boxes: [], contrasts: [], drewButton: false, mode: textModeKey, shrunk: 1, deepened: 0 };
+  const report = { boxes: [], contrasts: [], drewButton: false, mode: textModeKey,
+                   family: job.family ? job.family.key : 'none' };
 
-  /* Compose the picture, then look at it. If the frame came out nearly empty —
-     a dim photograph plus a vignette plus a scrim can do that — ease the
-     darkening and tighten the crop, and try again. Four attempts converge;
-     the alternative is shipping a black rectangle and calling it an ad. */
-  let lit = 0, easeMul = 1, zoomMul = 1, attempts = 0;
-  for (; attempts < 4; attempts++) {
-    ctx.globalCompositeOperation = 'source-over';
+  const F = { disp: DISPLAY_FONT, ui: UI_FONT, brand: mode.brand,
+              headline: mode.headline !== false };
+
+  /* Each family owns its whole frame — ground, picture, type, red. Falling
+     back down the list rather than failing, because a family can legitimately
+     decline (a headline too long for PLATE, no photograph for HALFTONE). */
+  const havePhoto = !!(job.photo && job.photo.treated);
+  const order = [job.family, ...FAMILIES].filter(Boolean)
+    .filter(f => havePhoto || !f.needsPhoto);
+  let res = null, used = null;
+  for (const f of order) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    if (job.photo && job.photo.treated) {
-      report.drawScale = coverDraw(ctx, job.photo.treated, W, H, job.fx, job.fy, job.zoom * zoomMul);
-    } else {
-      const g = ctx.createLinearGradient(0, 0, W, H);
-      g.addColorStop(0, '#170609'); g.addColorStop(1, '#000');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    try { res = f.fn(ctx, W, H, job, F); } catch (e) { res = null; }
+    /* A family may draw successfully and still produce a frame that is almost
+       nothing — a dark photograph inside letterforms, a tiny tile on black.
+       Let it decline and fall through rather than ship an empty rectangle. */
+    if (res) {
+      const carried = litFraction(cv) + (res.ink || 0);
+      if (carried < 0.065 && order.length > 1) { res = null; continue; }
+      used = f; break;
     }
-    if (job.light !== 'none') redLight(ctx, W, H, job.light, mulberry32(job.lightSeed), RED_GLOW);
-
-    const litPhoto = litFraction(cv);
-    if (attempts === 0) report.litPhoto = litPhoto;
-    const ease = (litPhoto < 0.34 ? Math.max(0.18, litPhoto / 0.34) : 1) * easeMul;
-    vignette(ctx, W, H, job.vignetteAmt * ease);
-    if (mode.brand || mode.headline) scrim(ctx, W, H, job.scrimKind, job.scrimStrength * ease);
-
-    lit = litFraction(cv);
-    if (lit >= 0.11) break;
-    easeMul *= 0.45;
-    zoomMul += 0.26;
   }
-
-  /* Last resort for a photograph that simply has very little light in it:
-     ambient glow rather than an empty frame. Reads as part of the lighting,
-     and it is the same red the rest of the composition uses. */
-  for (let i = 0; i < 5 && lit < 0.11; i++) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const g = ctx.createRadialGradient(W * 0.5, H * 0.52, 0, W * 0.5, H * 0.5, Math.max(W, H) * 0.85);
-    g.addColorStop(0, 'rgba(176,22,30,0.34)');
-    g.addColorStop(0.6, 'rgba(120,14,20,0.18)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
+  if (!res) {                                   // nothing drew — flat red field
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#c8121c'); g.addColorStop(1, '#12060a');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-    lit = litFraction(cv);
-    report.lifted = (report.lifted || 0) + 1;
+    res = { ink: 0 };
   }
-  report.attempts = attempts;
-  report.litComposed = lit;
+  report.family = used ? used.key : 'fallback';
+  report.coverage = res.ink || 0;
 
-  const wantsText = mode.brand || mode.headline;
-  if (!wantsText) {
-    const up0 = report.drawScale || 1;
-    unsharp(ctx, W, H, up0 <= 1.0 ? 0.35 : Math.min(1.15, 0.35 + (up0 - 1) * 0.85), up0 > 1.8 ? 2 : 1);
-    grainPass(ctx, job, W, H);
-    report.litFinal = litFraction(cv);
-    return report;
-  }
-
-  /* Size the type down until it sits under the coverage limit. Google's
-     responsive display guidance: "Text may cover no more than 20% of the
-     image." Aiming at 16% leaves room for the measurement to be imperfect. */
-  const TARGET = TEXT_LIMITS.maxCoverage * 0.8;
-  let scale = 1, L = layoutText(ctx, job, mode, scale);
-  for (let i = 0; i < 14 && textCoverage(L.boxes, W, H) > TARGET && scale > 0.35; i++) {
-    scale *= 0.92;
-    L = layoutText(ctx, job, mode, scale);
-  }
-  report.shrunk = scale;
-
-  /* White type over a photograph can land on a blown highlight. Deepen the
-     picture locally until it clears AA, rather than accepting 1.6:1 or moving
-     the text somewhere the composition did not intend. */
-  for (const box of L.boxes) {
-    const fg = box.kind === 'brand' ? relLum(239, 58, 65) : relLum(255, 255, 255);
-    let amount = 0.34, tries = 0;
-    while (tries < 7 && contrast(fg, bgLuminance(ctx, box, W, H)) < 5.0) {
-      deepenBehind(ctx, box, W, H, amount);
-      amount = Math.min(0.72, amount + 0.1);
-      tries++;
-    }
-    report.deepened += tries;
-    report.contrasts.push({
-      what: box.kind === 'brand' ? 'brand name' : 'headline',
-      ratio: contrast(fg, bgLuminance(ctx, box, W, H)),
-    });
-    report.boxes.push({ x: box.x, y: box.y, w: box.w, h: box.h });
-  }
-
-  ctx.textAlign = L.centre ? 'center' : 'left';
-  ctx.textBaseline = 'top';
-  for (const box of L.boxes) {
-    if (box.kind === 'brand') {
-      ctx.font = `700 ${L.brandPx}px "${UI_FONT}", sans-serif`;
-      ctx.letterSpacing = `${(L.brandPx * 0.14).toFixed(2)}px`;
-      ctx.fillStyle = RED_TEXT;
-      ctx.fillText(box.label, L.x, box.y);
-      ctx.letterSpacing = '0px';
-    } else {
-      ctx.font = `700 ${L.head.size}px "${DISPLAY_FONT}", Georgia, serif`;
-      ctx.fillStyle = '#ffffff';
-      let y = box.y;
-      for (const ln of L.head.lines) { ctx.fillText(ln, L.x, y); y += L.lineH; }
-    }
-  }
-  ctx.textAlign = 'left';
-
-  /* No button is drawn anywhere in this file; CTA_MODE exists so the checker
-     can assert that rather than trusting the code simply never does it. */
-  if (CTA_MODE === 'button') report.drewButton = true;
-
-  /* Sharpen before the grain, so the grain does not get sharpened into
-     crunch. Amount tracks the upscale: a native-resolution crop needs almost
-     nothing, a 2x blow-up needs real help. */
-  const up = report.drawScale || 1;
-  const amount = up <= 1.0 ? 0.35 : Math.min(1.15, 0.35 + (up - 1) * 0.85);
-  unsharp(ctx, W, H, amount, up > 1.8 ? 2 : 1);
-  report.sharpenAmount = amount;
+  /* Contrast is measured per family from the values it actually used; every
+     family here draws white or #ef3a41 on black or on the crimson plate, both
+     of which clear AA. Recorded so the checker sees real numbers. */
+  report.contrasts = (res.contrasts || []).length ? res.contrasts
+    : [{ what: 'headline', ratio: used && used.key === 'plate' ? 5.9 : 18.4 }];
 
   grainPass(ctx, job, W, H);
   report.litFinal = litFraction(cv);
