@@ -7,8 +7,6 @@
  * toBlob() throws, so the downloads would break.
  */
 
-import { handleCanva } from './canva.js';
-
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -93,9 +91,42 @@ export default {
         status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } });
       return proxy(target);
     }
-    if (url.pathname.startsWith('/canva/')) {
-      return handleCanva(request, env, url.pathname, CORS);
+    /* Drop-box for the render machine. It generates on the GPU and POSTs the
+       finished PNGs here, because the rig is inbound-closed and this Worker is
+       the only channel that reaches both sides. Write needs the token; read is
+       open so the images can simply be linked. */
+    if (url.pathname.startsWith('/rig/')) {
+      const name = url.pathname.slice(5);
+      if (request.method === 'PUT' || request.method === 'POST') {
+        const tok = request.headers.get('x-rig-token') || '';
+        const want = await env.ADGEN.get('rig_token');
+        if (!want || tok !== want) {
+          return new Response(JSON.stringify({ error: 'unauthorised' }),
+            { status: 401, headers: { ...CORS, 'Content-Type': 'application/json' } });
+        }
+        const buf = await request.arrayBuffer();
+        if (buf.byteLength > 24 * 1024 * 1024) {
+          return new Response(JSON.stringify({ error: 'too large' }),
+            { status: 413, headers: { ...CORS, 'Content-Type': 'application/json' } });
+        }
+        await env.ADGEN.put('rig:' + name, buf, { expirationTtl: 60 * 60 * 24 * 7 });
+        const idx = JSON.parse((await env.ADGEN.get('rig_index')) || '[]');
+        if (!idx.includes(name)) idx.unshift(name);
+        await env.ADGEN.put('rig_index', JSON.stringify(idx.slice(0, 200)));
+        return new Response(JSON.stringify({ ok: true, name, bytes: buf.byteLength }),
+          { headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+      if (!name || name === 'index') {
+        const idx = JSON.parse((await env.ADGEN.get('rig_index')) || '[]');
+        return new Response(JSON.stringify({ files: idx }),
+          { headers: { ...CORS, 'Content-Type': 'application/json' } });
+      }
+      const v = await env.ADGEN.get('rig:' + name, 'arrayBuffer');
+      if (!v) return new Response('not found', { status: 404, headers: CORS });
+      return new Response(v, { headers: { ...CORS,
+        'Content-Type': name.endsWith('.json') ? 'application/json' : 'image/png' } });
     }
+
     if (url.pathname === '/health') {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...CORS, 'Content-Type': 'application/json' } });
